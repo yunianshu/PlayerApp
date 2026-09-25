@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>跑迹 RunTrail — 设计方向对比</title>
+<link href="https://fonts.loli.net/css2?family=Playfair+Display:wght@600;700;800&family=Barlow+Condensed:ital,wght@1,500;1,600;1,700&family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #191922;
+    font-family: 'Inter', 'Noto Sans SC', sans-serif;
+    min-height: 100vh;
+    padding: 48px 24px 80px;
+    color: #fff;
+  }
+  .page-head { max-width: 1280px; margin: 0 auto 40px; }
+  .page-head h1 { font-size: 28px; font-weight: 700; letter-spacing: .5px; }
+  .page-head p { margin-top: 8px; color: #8a8f9d; font-size: 14px; }
+  .gallery {
+    max-width: 1280px; margin: 0 auto;
+    display: flex; gap: 40px; justify-content: center; flex-wrap: wrap;
+  }
+  .direction { width: 390px; }
+  .direction h2 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .direction .desc { font-size: 12.5px; color: #8a8f9d; margin-bottom: 16px; line-height: 1.7; }
+  .phone {
+    width: 390px; border-radius: 44px; padding: 10px;
+    background: #000; box-shadow: 0 30px 80px rgba(0,0,0,.55);
+  }
+  .screen {
+    width: 100%; border-radius: 36px; overflow: hidden;
+    display: flex; flex-direction: column; min-height: 780px;
+    position: relative;
+  }
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 24px 4px; font-size: 13px; font-weight: 600;
+  }
+  .tabbar {
+    margin: auto 14px 14px; border-radius: 999px;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 20px;
+  }
+  .tabbar .t { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; font-size: 9px; }
+  .playbtn {
+    width: 54px; height: 54px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0;
+  }
+
+  /* ============ 方向 A：浅系编辑风 ============ */
+  .a .screen { background: #F4F1E8; color: #14150F; font-family: 'Noto Sans SC', sans-serif; }
+  .a .statusbar { color: #14150F; }
+  .a .greet { font-size: 11px; letter-spacing: 2px; color: #8A8878; text-transform: uppercase; }
+  .a h3 { font-family: 'Playfair Display', 'Noto Sans SC', serif; font-size: 24px; font-weight: 700; }
+  .a .head { padding: 14px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+  .a .avatar { width: 38px; height: 38px; border: 1.5px solid #14150F; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .a .hero { padding: 26px 24px 8px; border-bottom: 1px solid #D8D4C4; }
+  .a .hero-label { font-size: 11px; color: #8A8878; letter-spacing: 3px; display: flex; justify-content: space-between; }
+  .a .bignum { font-family: 'Playfair Display', serif; font-size: 74px; font-weight: 800; line-height: 1; margin-top: 6px; display: flex; align-items: baseline; gap: 8px; }
+  .a .bignum .unit { font-family: 'Noto Sans SC'; font-size: 13px; color: #8A8878; writing-mode: vertical-rl; letter-spacing: 2px; }
+  .a .progress { height: 2px; background: #D8D4C4; margin: 18px 0 20px; position: relative; }
+  .a .progress i { position: absolute; left: 0; top: 0; bottom: 0; width: 63%; background: #B8E62E; }
+  .a .progress b { position: absolute; right: 0; top: -20px; font-size: 11px; color: #14150F; font-weight: 600; }
+  .a .ministats { display: flex; gap: 0; padding: 0 24px; }
+  .a .ministats div { flex: 1; padding: 14px 0 4px; border-right: 1px solid #D8D4C4; }
+  .a .ministats div:last-child { border-right: 0; }
+  .a .ministats span { display: block; font-size: 10px; color: #8A8878; letter-spacing: 1px; margin-bottom: 4px; }
+  .a .ministats b { font-size: 15px; font-weight: 700; }
+  .a .chart { padding: 22px 24px 8px; }
+  .a .chart-title { font-size: 12px; font-weight: 700; letter-spacing: 2px; margin-bottom: 14px; display: flex; justify-content: space-between; }
+  .a .bars { display: flex; justify-content: space-between; align-items: flex-end; height: 64px; }
+  .a .bars div { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  .a .bars i { display: block; width: 16px; border-radius: 0; }
+  .a .bars span { font-size: 9px; color: #8A8878; }
+  .a .list { padding: 18px 24px 6px; }
+  .a .list-title { font-size: 12px; font-weight: 700; letter-spacing: 2px; margin-bottom: 4px; }
+  .a .run { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #E4E0D2; }
+  .a .run:last-child { border-bottom: 0; }
+  .a .run .dot { width: 6px; height: 6px; background: #B8E62E; border-radius: 50%; flex-shrink: 0; }
+  .a .run .info { flex: 1; }
+  .a .run .info b { font-size: 12.5px; font-weight: 600; display: block; }
+  .a .run .info span { font-size: 10.5px; color: #8A8878; }
+  .a .run .km { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 700; }
+  .a .tabbar { background: #14150F; color: #8A8878; }
+  .a .tabbar .t.on { color: #B8E62E; }
+  .a .playbtn { background: #B8E62E; color: #14150F; box-shadow: 0 4px 16px rgba(184,230,46,.5); }
+
+  /* ============ 方向 B：高燃运动风 ============ */
+  .b .screen { background: #101014; color: #F5F2EE; font-family: 'Noto Sans SC', sans-serif; }
+  .b .statusbar { color: #F5F2EE; }
+  .b .head { padding: 12px 22px 0; display: flex; justify-content: space-between; align-items: center; }
+  .b .greet { font-size: 11px; color: #76707a; }
+  .b h3 { font-family: 'Barlow Condensed', 'Noto Sans SC', sans-serif; font-style: italic; font-size: 30px; font-weight: 700; letter-spacing: 1px; }
+  .b .avatar { width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg,#FF6B4A,#E8503F); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .b .hero { margin: 18px 16px 0; padding: 22px 20px; border-radius: 4px 22px 4px 22px; background: linear-gradient(135deg, #1C1B22 0%, #141319 100%); position: relative; overflow: hidden; }
+  .b .hero::before { content: ''; position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(255,107,74,.25), transparent 70%); }
+  .b .hero-label { font-size: 10px; letter-spacing: 3px; color: #FF8F6E; font-weight: 600; }
+  .b .bignum { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-size: 88px; font-weight: 700; line-height: .95; margin-top: 4px; background: linear-gradient(90deg,#FF6B4A,#FFC24A); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .b .bignum small { font-size: 22px; -webkit-text-fill-color: #F5F2EE; }
+  .b .hero-sub { display: flex; gap: 16px; margin-top: 14px; font-size: 11px; color: #a09aa8; }
+  .b .hero-sub b { color: #F5F2EE; font-size: 13px; display: block; margin-bottom: 2px; }
+  .b .ringrow { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .b .ringrow .bar2 { flex: 1; height: 6px; border-radius: 3px; background: #26252e; overflow: hidden; }
+  .b .ringrow .bar2 i { display: block; height: 100%; width: 63%; border-radius: 3px; background: linear-gradient(90deg,#FF6B4A,#E8503F); }
+  .b .ringrow span { font-size: 10px; color: #FF8F6E; font-weight: 700; }
+  .b .chart { margin: 14px 16px 0; padding: 16px 18px; border-radius: 4px 22px 4px 22px; background: #1C1B22; }
+  .b .chart-title { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; margin-bottom: 14px; color: #F5F2EE; }
+  .b .bars { display: flex; justify-content: space-between; align-items: flex-end; height: 62px; }
+  .b .bars div { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  .b .bars i { display: block; width: 18px; border-radius: 4px 4px 2px 2px; transform: skewX(-8deg); }
+  .b .bars span { font-size: 9px; color: #76707a; }
+  .b .list { padding: 16px 22px 6px; }
+  .b .list-title { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; margin-bottom: 6px; }
+  .b .run { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px dashed #26252e; }
+  .b .run:last-child { border: 0; }
+  .b .run .tag { width: 4px; height: 30px; border-radius: 2px; background: linear-gradient(#FF6B4A,#E8503F); }
+  .b .run .info { flex: 1; }
+  .b .run .info b { font-size: 12.5px; display: block; }
+  .b .run .info span { font-size: 10.5px; color: #76707a; }
+  .b .run .km { font-family: 'Barlow Condensed'; font-style: italic; font-size: 22px; font-weight: 700; color: #FFC24A; }
+  .b .tabbar { background: #1C1B22; color: #76707a; border: 1px solid #26252e; }
+  .b .tabbar .t.on { color: #FF6B4A; }
+  .b .playbtn { background: linear-gradient(135deg,#FF6B4A,#E8503F); color: #fff; box-shadow: 0 6px 20px rgba(232,80,63,.45); }
+
+  /* ============ 方向 C：清透玻璃风 ============ */
+  .c .screen { background: linear-gradient(180deg, #EDEFF8 0%, #E4E9F5 100%); color: #1C1C2E; font-family: 'Inter','Noto Sans SC', sans-serif; }
+  .c .statusbar { color: #1C1C2E; }
+  .c .head { padding: 12px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+  .c .greet { font-size: 11px; color: #7A7F94; font-weight: 500; }
+  .c h3 { font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
+  .c .avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg,#5E5CE6,#3DD8D0); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; box-shadow: 0 4px 12px rgba(94,92,230,.35); }
+  .c .hero { margin: 18px 18px 0; padding: 22px; border-radius: 28px; background: linear-gradient(135deg, #5E5CE6 0%, #7B5CE6 55%, #3DD8D0 130%); color: #fff; box-shadow: 0 18px 40px rgba(94,92,230,.35); position: relative; overflow: hidden; }
+  .c .hero::after { content:''; position: absolute; width: 180px; height: 180px; border-radius: 50%; background: rgba(255,255,255,.12); top: -70px; right: -50px; }
+  .c .hero-label { font-size: 11px; opacity: .85; font-weight: 500; letter-spacing: .5px; display: flex; justify-content: space-between; }
+  .c .bignum { font-size: 64px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-top: 8px; }
+  .c .bignum small { font-size: 17px; font-weight: 600; letter-spacing: 0; opacity: .85; }
+  .c .rings { display: flex; gap: 18px; margin-top: 18px; position: relative; z-index: 1; }
+  .c .ring { display: flex; align-items: center; gap: 8px; }
+  .c .ring svg { transform: rotate(-90deg); }
+  .c .ring b { font-size: 11px; font-weight: 600; }
+  .c .ring span { font-size: 9px; opacity: .8; display: block; }
+  .c .card { margin: 14px 18px 0; padding: 16px 18px; border-radius: 24px; background: rgba(255,255,255,.75); backdrop-filter: blur(20px); box-shadow: 0 8px 24px rgba(28,28,46,.07); }
+  .c .chart-title { font-size: 13px; font-weight: 700; margin-bottom: 14px; }
+  .c .bars { display: flex; justify-content: space-between; align-items: flex-end; height: 60px; }
+  .c .bars div { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+  .c .bars i { display: block; width: 16px; border-radius: 6px; }
+  .c .bars span { font-size: 9px; color: #7A7F94; }
+  .c .list .run { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+  .c .list .ic { width: 34px; height: 34px; border-radius: 12px; background: linear-gradient(135deg,#EFEFFC,#E2F9F7); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .c .run .info { flex: 1; }
+  .c .run .info b { font-size: 12.5px; display: block; }
+  .c .run .info span { font-size: 10.5px; color: #7A7F94; }
+  .c .run .km { font-size: 14px; font-weight: 700; color: #5E5CE6; }
+  .c .tabbar { background: rgba(255,255,255,.85); backdrop-filter: blur(20px); color: #A0A5B8; box-shadow: 0 8px 24px rgba(28,28,46,.1); }
+  .c .tabbar .t.on { color: #5E5CE6; }
+  .c .playbtn { background: linear-gradient(135deg,#5E5CE6,#3DD8D0); color: #fff; box-shadow: 0 8px 20px rgba(94,92,230,.45); }
+</style>
+</head>
+<body>
+<div class="page-head">
+  <h1>跑迹 RunTrail · 设计方向对比</h1>
+  <p>三个方向的首页稿，选定后我会把全套界面（跑步中 / 完成 / 历史 / 详情 / 统计 / 我的）按该风格重新设计并同步更新 Flutter 代码。</p>
+</div>
+
+<div class="gallery">
+
+  <!-- ===== 方向 A ===== -->
+  <div class="direction a">
+    <h2>A · 浅系编辑风</h2>
+    <div class="desc">奶油纸白 + 墨黑 + 荧光绿。衬线大数字、细线分隔、竖排单位，像运动杂志一样耐看，白天户外可视性最好。</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span>◆ ◆ 100%</span></div>
+      <div class="head">
+        <div><div class="greet">早上好 · 跑者</div><h3>跑迹 RunTrail</h3></div>
+        <div class="avatar">阿</div>
+      </div>
+      <div class="hero">
+        <div class="hero-label"><span>本周里程 WEEK</span><span>目标 20KM</span></div>
+        <div class="bignum">12.6<span class="unit">公里 KM</span></div>
+        <div class="progress"><b>63%</b><i></i></div>
+      </div>
+      <div class="ministats">
+        <div><span>时长</span><b>1:42:30</b></div>
+        <div><span>次数</span><b>3 次</b></div>
+        <div><span>消耗</span><b>860 kcal</b></div>
+      </div>
+      <div class="chart">
+        <div class="chart-title"><span>本周活动</span><span style="color:#8A8878;font-weight:400">KM</span></div>
+        <div class="bars">
+          <div><i style="height:24px;background:#14150F"></i><span>一</span></div>
+          <div><i style="height:5px;background:#D8D4C4"></i><span>二</span></div>
+          <div><i style="height:30px;background:#14150F"></i><span>三</span></div>
+          <div><i style="height:5px;background:#D8D4C4"></i><span>四</span></div>
+          <div><i style="height:18px;background:#14150F"></i><span>五</span></div>
+          <div><i style="height:5px;background:#D8D4C4"></i><span>六</span></div>
+          <div><i style="height:22px;background:#B8E62E"></i><span style="color:#14150F;font-weight:700">日</span></div>
+        </div>
+      </div>
+      <div class="list">
+        <div class="list-title">最近跑步</div>
+        <div class="run"><div class="dot"></div><div class="info"><b>今天 07:30 · 晨跑</b><span>配速 5'29" · 28'32"</span></div><div class="km">5.20</div></div>
+        <div class="run"><div class="dot"></div><div class="info"><b>昨天 18:20 · 夜跑</b><span>配速 5'52" · 28'10"</span></div><div class="km">4.80</div></div>
+        <div class="run"><div class="dot"></div><div class="info"><b>9月18日 · 长距离</b><span>配速 6'15" · 53'48"</span></div><div class="km">8.60</div></div>
+      </div>
+      <div class="tabbar">
+        <div class="t on">⌂<span>首页</span></div>
+        <div class="t">◷<span>历史</span></div>
+        <div class="playbtn">▶</div>
+        <div class="t">▤<span>统计</span></div>
+        <div class="t">◯<span>我的</span></div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ===== 方向 B ===== -->
+  <div class="direction b">
+    <h2>B · 高燃运动风</h2>
+    <div class="desc">炭黑底 + 日落橙红渐变。斜体加粗数字、斜切卡片、能量条，视觉冲击最强，最接近 Keep/NRC 的运动气质。</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span>◆ ◆ 100%</span></div>
+      <div class="head">
+        <div><div class="greet">晚上好 · 跑者</div><h3>RUNTRAIL</h3></div>
+        <div class="avatar">阿</div>
+      </div>
+      <div class="hero">
+        <div class="hero-label">本周里程 THIS WEEK</div>
+        <div class="bignum">12.6<small> KM</small></div>
+        <div class="ringrow"><div class="bar2"><i></i></div><span>63% / 20KM</span></div>
+        <div class="hero-sub">
+          <div><b>1:42:30</b>总时长</div>
+          <div><b>3 次</b>跑步</div>
+          <div><b>860</b>千卡</div>
+        </div>
+      </div>
+      <div class="chart">
+        <div class="chart-title">本周活动</div>
+        <div class="bars">
+          <div><i style="height:22px;background:#FF8F6E"></i><span>一</span></div>
+          <div><i style="height:4px;background:#26252e"></i><span>二</span></div>
+          <div><i style="height:30px;background:#FF8F6E"></i><span>三</span></div>
+          <div><i style="height:4px;background:#26252e"></i><span>四</span></div>
+          <div><i style="height:16px;background:#FF8F6E"></i><span>五</span></div>
+          <div><i style="height:4px;background:#26252e"></i><span>六</span></div>
+          <div><i style="height:20px;background:linear-gradient(#FF6B4A,#FFC24A)"></i><span style="color:#FFC24A">日</span></div>
+        </div>
+      </div>
+      <div class="list">
+        <div class="list-title">最近跑步</div>
+        <div class="run"><div class="tag"></div><div class="info"><b>今天 07:30 · 晨跑</b><span>配速 5'29" · 28'32"</span></div><div class="km">5.20</div></div>
+        <div class="run"><div class="tag"></div><div class="info"><b>昨天 18:20 · 夜跑</b><span>配速 5'52" · 28'10"</span></div><div class="km">4.80</div></div>
+        <div class="run"><div class="tag"></div><div class="info"><b>9月18日 · 长距离</b><span>配速 6'15" · 53'48"</span></div><div class="km">8.60</div></div>
+      </div>
+      <div class="tabbar">
+        <div class="t on">⌂<span>首页</span></div>
+        <div class="t">◷<span>历史</span></div>
+        <div class="playbtn">▶</div>
+        <div class="t">▤<span>统计</span></div>
+        <div class="t">◯<span>我的</span></div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- ===== 方向 C ===== -->
+  <div class="direction c">
+    <h2>C · 清透玻璃风</h2>
+    <div class="desc">雾白底 + 靛蓝紫渐变英雄卡 + 毛玻璃卡片。最像现代 iOS 应用（Apple Fitness 路线），柔和、干净、有品质感。</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span>◆ ◆ 100%</span></div>
+      <div class="head">
+        <div><div class="greet">早上好，跑者</div><h3>跑迹</h3></div>
+        <div class="avatar">阿</div>
+      </div>
+      <div class="hero">
+        <div class="hero-label"><span>本周里程</span><span>目标 20 km</span></div>
+        <div class="bignum">12.6 <small>km</small></div>
+        <div class="rings">
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="88" stroke-dashoffset="33" stroke-linecap="round"/></svg><div><b>63%</b><span>周目标</span></div></div>
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#3DD8D0" stroke-width="4" stroke-dasharray="88" stroke-dashoffset="52" stroke-linecap="round"/></svg><div><b>1:42</b><span>总时长</span></div></div>
+          <div class="ring"><svg width="34" height="34"><circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="4"/><circle cx="17" cy="17" r="14" fill="none" stroke="#FFE066" stroke-width="4" stroke-dasharray="88" stroke-dashoffset="40" stroke-linecap="round"/></svg><div><b>860</b><span>千卡</span></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="chart-title">本周活动</div>
+        <div class="bars">
+          <div><i style="height:22px;background:#8B89E8"></i><span>一</span></div>
+          <div><i style="height:4px;background:#E3E6F0"></i><span>二</span></div>
+          <div><i style="height:30px;background:#8B89E8"></i><span>三</span></div>
+          <div><i style="height:4px;background:#E3E6F0"></i><span>四</span></div>
+          <div><i style="height:16px;background:#8B89E8"></i><span>五</span></div>
+          <div><i style="height:4px;background:#E3E6F0"></i><span>六</span></div>
+          <div><i style="height:20px;background:#5E5CE6"></i><span style="color:#5E5CE6;font-weight:600">日</span></div>
+        </div>
+      </div>
+      <div class="card list">
+        <div class="chart-title">最近跑步</div>
+        <div class="run"><div class="ic">🌅</div><div class="info"><b>今天 07:30 · 晨跑</b><span>配速 5'29" · 28'32"</span></div><div class="km">5.20 km</div></div>
+        <div class="run"><div class="ic">🌙</div><div class="info"><b>昨天 18:20 · 夜跑</b><span>配速 5'52" · 28'10"</span></div><div class="km">4.80 km</div></div>
+      </div>
+      <div class="tabbar">
+        <div class="t on">⌂<span>首页</span></div>
+        <div class="t">◷<span>历史</span></div>
+        <div class="playbtn">▶</div>
+        <div class="t">▤<span>统计</span></div>
+        <div class="t">◯<span>我的</span></div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+</body>
+</html>

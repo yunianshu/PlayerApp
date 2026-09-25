@@ -1,0 +1,5 @@
+# 工具缓存（不入库）
+.hvigor/
+.codeartsdoer/
+# 鸿蒙 pub 缓存（与项目同盘的专用缓存目录，见 docs/harmonyos.md）
+.pub-cache-ohos/

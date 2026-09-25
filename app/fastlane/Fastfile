@@ -1,0 +1,64 @@
+# 蒲公英分发：上传安装包，返回扫码安装短链。
+# 用法：
+#   1. 在 fastlane/.env 里配置 PGYER_API_KEY（蒲公英账号设置里获取）
+#   2. cd app && fastlane runtrail pgyer_apk   # Android APK
+#                fastlane runtrail pgyer_hap   # 鸿蒙 HAP
+# 可选参数：desc:"本次更新说明"
+
+# 手动加载 .env（fastlane 自动加载通常也生效，这里兜底）
+env_file = File.expand_path(".env", __dir__)
+if File.exist?(env_file)
+  require "dotenv"
+  Dotenv.load(env_file)
+end
+
+# 插件以全局 gem 安装（无 Gemfile/bundler），手动引入注册 pgyer action
+require "fastlane/plugin/pgyer"
+
+default_platform(:runtrail)
+
+platform :runtrail do
+  desc "上传 Android APK 到蒲公英（扫码安装）"
+  lane :pgyer_apk do |options|
+    upload(
+      file: File.expand_path("../build/app/outputs/flutter-apk/app-release.apk", __dir__),
+      type: :apk,
+      desc: options[:desc] || "跑迹 RunTrail Android 测试包",
+    )
+  end
+
+  desc "上传鸿蒙 HAP 到蒲公英（扫码安装）"
+  lane :pgyer_hap do |options|
+    upload(
+      file: File.expand_path("../build/ohos/hap/entry-default-signed.hap", __dir__),
+      type: :hap,
+      desc: options[:desc] || "跑迹 RunTrail HarmonyOS 测试包",
+    )
+  end
+
+  private_lane :upload do |options|
+    file = options[:file]
+    type = options[:type]
+    desc = options[:desc]
+    api_key = ENV["PGYER_API_KEY"]
+    UI.user_error!("未配置 PGYER_API_KEY，请在 app/fastlane/.env 中填写") if api_key.to_s.empty?
+    UI.user_error!("文件不存在：#{file}") unless File.exist?(file)
+
+    UI.message("上传 #{type}：#{file}")
+    result = pgyer(
+      api_key: api_key,
+      type => file,
+      update_description: desc,
+    )
+
+    if result.is_a?(Hash)
+      UI.success("✅ 上传成功")
+      UI.success("📱 下载短链：#{result["fastlaneAddedWholeVisitUrl"]}")
+      UI.success("🔳 二维码：#{result["buildQRCodeURL"]}")
+      UI.success("📦 版本：#{result["buildVersion"]} (#{result["buildVersionNo"]})")
+    else
+      UI.message("返回结果：#{result.inspect}")
+    end
+    result
+  end
+end

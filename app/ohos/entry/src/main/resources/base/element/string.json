@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "跑步里程记录"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "跑迹 RunTrail"
+    },
+    {
+      "name": "location_reason",
+      "value": "用于记录跑步轨迹和里程"
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+name: runtrail
+description: "跑迹 RunTrail - 跑步里程记录（本地应用）"
+publish_to: 'none'
+version: 1.0.0+1
+
+# 鸿蒙专用 pubspec：与 ohos-flutter 3.22 (Dart 3.4) 兼容。
+# 原生插件全部换成 OpenHarmony-SIG 社区适配版（git 引用）。
+# 用法见 docs/harmonyos.md 或 tool/ohos_build.sh。
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  intl: ^0.19.0
+  provider: ^6.1.2
+  path: ^1.9.0
+
+  # 定位（鸿蒙适配版，基于 geolocator 13）：主包 + ohos 实现包，
+  # 缺 geolocator_ohos 时 ohos 端不会有原生模块（运行时 MissingPluginException）。
+  geolocator:
+    git:
+      url: "https://gitcode.com/openharmony-sig/fluttertpc_geolocator.git"
+      ref: br_geolocator_v13.0.0_ohos
+      path: geolocator
+  flutter_geolocator_ohos:
+    git:
+      url: "https://gitcode.com/openharmony-sig/fluttertpc_geolocator.git"
+      ref: br_geolocator_v13.0.0_ohos
+      path: geolocator_ohos
+
+  # 本地 SQLite（鸿蒙适配版）
+  sqflite:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_sqflite.git"
+      path: sqflite
+
+  # 路径 / 偏好存储（鸿蒙适配版）
+  path_provider:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
+      ref: master
+      path: packages/path_provider/path_provider
+  shared_preferences:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
+      ref: master
+      path: packages/shared_preferences/shared_preferences
+
+  # 分享（鸿蒙适配版）
+  share_plus:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_plus_plugins.git"
+      path: packages/share_plus/share_plus
+
+  # 防息屏（鸿蒙适配版）：3.22 对应 br_wakelock_plus_1.2.8_ohos 分支，
+  # 同样需要显式引入 ohos 实现包（wakelock_plus/ohos）。
+  wakelock_plus:
+    git:
+      url: "https://gitcode.com/openharmony-sig/fluttertpc_wakelock_plus.git"
+      ref: br_wakelock_plus_1.2.8_ohos
+      path: wakelock_plus
+  wakelock_plus_ohos:
+    git:
+      url: "https://gitcode.com/openharmony-sig/fluttertpc_wakelock_plus.git"
+      ref: br_wakelock_plus_1.2.8_ohos
+      path: wakelock_plus/ohos
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  # 测试用：widget_test/database_test 依赖 ffi 数据库工厂。
+  # 用同一 fork 的 ohos 适配版（hosted 版 2.3.3+ 要求 Dart >=3.5，与本工具链冲突）。
+  sqflite_common_ffi:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_sqflite.git"
+      path: sqflite_common_ffi
+
+# ohos-flutter 3.22 (Dart 3.4) 无法编译 web 1.x 的扩展类型语法，
+# 锁定到与 Flutter 3.22 同期的 0.5.x。
+dependency_overrides:
+  web: 0.5.1
+
+flutter:
+  uses-material-design: true
+
+  # 字体与主 pubspec 保持一致（离线打包，编辑风/夜间主题大数字依赖这些字体）。
+  fonts:
+    - family: Playfair Display
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
+        - asset: assets/fonts/PlayfairDisplay-Bold.ttf
+          weight: 700
+    - family: Noto Sans SC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Regular.ttf
+        - asset: assets/fonts/NotoSansSC-Bold.ttf
+          weight: 700
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/BarlowCondensed-BoldItalic.ttf
+          weight: 700
+          style: italic

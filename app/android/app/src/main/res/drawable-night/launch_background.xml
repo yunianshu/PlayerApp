@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 夜间模式启动屏：深色背景，避免夜间用户启动时白屏闪烁 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_background_night" />
+</layer-list>

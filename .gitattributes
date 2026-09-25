@@ -1,0 +1,7 @@
+# 统一 LF：Windows 全局 autocrlf 会在克隆时把文件转成 CRLF，
+# 曾导致 ohos module.json5 被鸿蒙工具的 JSON5 解析器拒绝。
+* text=auto eol=lf
+*.png binary
+*.ttf binary
+*.jks binary
+*.pen binary

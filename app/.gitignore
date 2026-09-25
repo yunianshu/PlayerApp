@@ -1,0 +1,61 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview related
+.widget_preview/
+
+# fastlane / 蒲公英
+fastlane/.env
+fastlane/report.xml
+pgyer-fastlane-uploaded-app-info.json
+
+# Flutter 生成文件与子平台构建产物
+.flutter-plugins
+build/
+
+# 双 pubspec 工作流（主工程 Dart 3.13 / ohos Dart 3.4）：
+# lock 随构建脚本切换而重写，主版 lock 需在主工具链 pub get 后本地生成，不入库
+app/pubspec.lock
