@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'training_plan_catalog.dart';
 
 class TrainingTask {
   final String date, type, title, notes;
@@ -19,8 +20,10 @@ class MarathonTrainingService {
   static const id = 'xiamen-marathon-2027';
   static const _completeKey = 'training-complete-v1';
   static Future<List<TrainingTask>> load() async {
-    final raw = await rootBundle.loadString('assets/training/xiamen_marathon_2027.json');
-    final data = jsonDecode(raw) as Map<String, dynamic>;
+    final active = await TrainingPlanCatalog.activePlan();
+    final data = active ?? jsonDecode(
+      await rootBundle.loadString('assets/training/xiamen_marathon_2027.json'))
+        as Map<String, dynamic>;
     return (data['tasks'] as List)
         .map((e) => TrainingTask.fromJson(e as Map<String, dynamic>))
         .toList();
