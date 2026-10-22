@@ -33,13 +33,15 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       final day = run.start.toLocal().toIso8601String().substring(0, 10);
       km[day] = (km[day] ?? 0) + run.distanceKm;
     }
-    if (mounted) setState(() {
+    if (mounted) {
+      setState(() {
       _reminderEnabled = enabled;
       _hour = time.$1;
       _minute = time.$2;
       _runsByDate = km;
       _feedback = feedback;
-    });
+      });
+    }
   }
   Future<void> _settings() async {
     final picked = await showTimePicker(
@@ -53,14 +55,18 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
     try {
       await TrainingReminderService.configure(
         enabled: value, hour: hour, minute: minute);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _reminderEnabled = value;
         _hour = hour;
         _minute = minute;
-      });
+        });
+      }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('提醒设置失败：$error')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('提醒设置失败：$error')));
+      }
     }
   }
   Future<void> _recordFeedback(TrainingTask task) async {
@@ -93,12 +99,16 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
     if (submitted != true) return;
     try {
       await TrainingFeedbackService.save(task.date, pain: pain, fatigue: fatigue);
-      if (mounted) setState(() => _feedback[task.date] = {
-        'pain': pain, 'fatigue': fatigue,
-      });
+      if (mounted) {
+        setState(() => _feedback[task.date] = {
+          'pain': pain, 'fatigue': fatigue,
+        });
+      }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('反馈保存失败：$error')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('反馈保存失败：$error')));
+      }
     }
   }
   String _pace(int? s) {
@@ -125,7 +135,8 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
             padding: const EdgeInsets.all(16),
             itemCount: tasks.length + 1,
             itemBuilder: (context, index) {
-              if (index == 0) return Padding(
+              if (index == 0) {
+                return Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('比赛日：2027年1月10日 · 目标先按5小时15分评估',
@@ -139,7 +150,8 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
                     onChanged: (v) => _changeReminder(v, _hour, _minute),
                   ),
                 ]),
-              );
+                );
+              }
               final t = tasks[index - 1], isToday = t.date == today;
               return Card(
                 child: CheckboxListTile(
@@ -160,12 +172,16 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
                   onChanged: (v) async {
                     try {
                       await MarathonTrainingService.setComplete(t.date, v ?? false);
-                      if (mounted) setState(() {
-                        if (v == true) { _done.add(t.date); } else { _done.remove(t.date); }
-                      });
+                      if (mounted) {
+                        setState(() {
+                          if (v == true) { _done.add(t.date); } else { _done.remove(t.date); }
+                        });
+                      }
                     } catch (e) {
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('保存失败：$e')));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('保存失败：$e')));
+                      }
                     }
                   },
                 ),
