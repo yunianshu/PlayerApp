@@ -3,6 +3,7 @@ import '../services/marathon_training_service.dart';
 import '../services/training_reminder_service.dart';
 import '../data/database.dart';
 import '../services/training_feedback_service.dart';
+import '../services/adaptive_training_service.dart';
 
 class MarathonTrainingPage extends StatefulWidget {
   const MarathonTrainingPage({super.key});
@@ -19,7 +20,7 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
   Map<String, Map<String, int>> _feedback = {};
   @override void initState() {
     super.initState();
-    _tasks = MarathonTrainingService.load();
+    _tasks = AdaptiveTrainingService.effectiveTasks();
     MarathonTrainingService.completed().then((v) { if (mounted) setState(() => _done = v); });
     _loadExtras();
   }
@@ -66,6 +67,58 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('提醒设置失败：$error')));
+      }
+    }
+  }
+  Future<void> _suggestAdjustments() async {
+    final proposal = await AdaptiveTrainingService.suggest(
+      now: DateTime.now(), actualKm: _runsByDate);
+    if (!mounted) return;
+    if (proposal == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('目前没有需要下调的训练建议')));
+      return;
+    }
+    final changes = (proposal['changes'] as List).cast<Map<String, dynamic>>();
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('训练调整建议（需确认）'),
+        content: SingleChildScrollView(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(proposal['reason'] as String),
+            const SizedBox(height: 12),
+            ...changes.map((c) => Text(
+              '${c['date']}：${c['from']} → ${c['to']} km')),
+            const SizedBox(height: 12),
+            const Text('未完成的公里数不补跑；原始计划保留。'),
+          ],
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认调整')),
+        ],
+      ),
+    );
+    if (approved != true) return;
+    try {
+      await AdaptiveTrainingService.apply(proposal);
+      if (await TrainingReminderService.enabled()) {
+        final time = await TrainingReminderService.time();
+        await TrainingReminderService.configure(
+          enabled: true, hour: time.$1, minute: time.$2);
+      }
+      if (mounted) setState(() {
+        _tasks = AdaptiveTrainingService.effectiveTasks();
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('调整失败：$e')));
       }
     }
   }
@@ -143,6 +196,11 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
                       style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Text('已完成 $finished / ${tasks.length} 天 · 疼痛持续或加重时停止训练'),
+                  FilledButton.icon(
+                    onPressed: _suggestAdjustments,
+                    icon: const Icon(Icons.auto_fix_high),
+                    label: const Text('评估并调整未来7天'),
+                  ),
                   SwitchListTile(
                     title: const Text('每日训练系统提醒（Android）'),
                     subtitle: Text('提醒时间：${_hour.toString().padLeft(2, '0')}:${_minute.toString().padLeft(2, '0')}'),
