@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/marathon_training_service.dart';
 import '../services/training_reminder_service.dart';
 import '../data/database.dart';
+import '../services/training_feedback_service.dart';
 
 class MarathonTrainingPage extends StatefulWidget {
   const MarathonTrainingPage({super.key});
@@ -15,6 +16,7 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
   int _hour = 6;
   int _minute = 0;
   Map<String, double> _runsByDate = {};
+  Map<String, Map<String, int>> _feedback = {};
   @override void initState() {
     super.initState();
     _tasks = MarathonTrainingService.load();
@@ -25,6 +27,7 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
     final enabled = await TrainingReminderService.enabled();
     final time = await TrainingReminderService.time();
     final runs = await RunDatabase.instance.listRuns();
+    final feedback = await TrainingFeedbackService.all();
     final km = <String, double>{};
     for (final run in runs) {
       final day = run.start.toLocal().toIso8601String().substring(0, 10);
@@ -35,6 +38,7 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       _hour = time.$1;
       _minute = time.$2;
       _runsByDate = km;
+      _feedback = feedback;
     });
   }
   Future<void> _settings() async {
@@ -57,6 +61,44 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
     } catch (error) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('提醒设置失败：$error')));
+    }
+  }
+  Future<void> _recordFeedback(TrainingTask task) async {
+    final old = _feedback[task.date];
+    var pain = old?['pain'] ?? 0;
+    var fatigue = old?['fatigue'] ?? 3;
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, refresh) => AlertDialog(
+          title: Text('${task.date} 训练反馈'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('疼痛程度 $pain / 10'),
+            Slider(value: pain.toDouble(), min: 0, max: 10, divisions: 10,
+                onChanged: (v) => refresh(() => pain = v.round())),
+            Text('疲劳程度 $fatigue / 10'),
+            Slider(value: fatigue.toDouble(), min: 0, max: 10, divisions: 10,
+                onChanged: (v) => refresh(() => fatigue = v.round())),
+            Text(TrainingFeedbackService.advisory(pain, fatigue)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (submitted != true) return;
+    try {
+      await TrainingFeedbackService.save(task.date, pain: pain, fatigue: fatigue);
+      if (mounted) setState(() => _feedback[task.date] = {
+        'pain': pain, 'fatigue': fatigue,
+      });
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('反馈保存失败：$error')));
     }
   }
   String _pace(int? s) {
@@ -109,6 +151,12 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
                     '${t.easyPace == null ? "" : " · ${_pace(t.easyPace)}–${_pace(t.slowPace)}/km"}\n${t.notes}',
                   ),
                   isThreeLine: true,
+                  secondary: IconButton(
+                    tooltip: '记录疼痛和疲劳',
+                    icon: Icon(_feedback.containsKey(t.date)
+                        ? Icons.health_and_safety : Icons.monitor_heart_outlined),
+                    onPressed: () => _recordFeedback(t),
+                  ),
                   onChanged: (v) async {
                     try {
                       await MarathonTrainingService.setComplete(t.date, v ?? false);
