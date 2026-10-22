@@ -18,6 +18,7 @@ import '../widgets/badges_card.dart';
 import '../widgets/load_error_page.dart';
 import '../widgets/common.dart';
 import 'detail_page.dart';
+import 'marathon_training_page.dart';
 import 'manual_entry_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -205,6 +206,8 @@ class HomePageState extends State<HomePage> {
               ],
               if (week != null) _heroCard(c, week.$1, week.$2, week.$3),
               const SizedBox(height: 12),
+              _trainingPlanCard(c),
+              const SizedBox(height: 12),
               _manualEntryCard(c),
               const SizedBox(height: 12),
               if (_weekKm != null) _weekChart(c, _weekKm!),
@@ -212,6 +215,35 @@ class HomePageState extends State<HomePage> {
               _recentSection(c),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _trainingPlanCard(AppPalette c) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const MarathonTrainingPage()),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_month_outlined, color: c.accent),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('2027厦门马拉松训练计划',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+                        color: c.textPrimary)),
+                const SizedBox(height: 4),
+                Text('查看每日训练、配速和完成情况',
+                    style: TextStyle(fontSize: 11, color: c.textSecondary)),
+              ],
+            )),
+            Icon(Icons.chevron_right_rounded, color: c.textMuted),
+          ],
         ),
       ),
     );
