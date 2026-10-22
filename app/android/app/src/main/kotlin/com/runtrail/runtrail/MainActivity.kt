@@ -91,6 +91,23 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "runtrail/training_reminders")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "replace" -> {
+                        val entries = call.argument<List<Map<String, Any?>>>("entries") ?: emptyList()
+                        TrainingAlarms.replace(this, entries)
+                        ensureNotificationPermission()
+                        result.success(true)
+                    }
+                    "cancel" -> {
+                        TrainingAlarms.cancel(this)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // 语音播报通道：系统 TextToSpeech。
         ttsChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "runtrail/tts")
         ttsChannel.setMethodCallHandler { call, result ->
