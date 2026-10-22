@@ -177,9 +177,11 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
         await TrainingReminderService.configure(
           enabled: true, hour: time.$1, minute: time.$2);
       }
-      if (mounted) setState(() {
-        _tasks = AdaptiveTrainingService.effectiveTasks();
-      });
+      if (mounted) {
+        setState(() {
+          _tasks = AdaptiveTrainingService.effectiveTasks();
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
