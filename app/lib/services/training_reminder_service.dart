@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'marathon_training_service.dart';
+import 'adaptive_training_service.dart';
 
 /// Android reminder scheduler. Other platforms explicitly report unsupported.
 class TrainingReminderService {
@@ -22,7 +22,7 @@ class TrainingReminderService {
     if (!Platform.isAndroid) {
       throw UnsupportedError('当前仅 Android 支持系统定时训练提醒');
     }
-    final tasks = await MarathonTrainingService.load();
+    final tasks = await AdaptiveTrainingService.effectiveTasks();
     final now = DateTime.now();
     final entries = <Map<String, Object>>[];
     if (enabled) {
