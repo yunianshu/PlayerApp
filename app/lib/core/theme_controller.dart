@@ -79,15 +79,14 @@ class ThemeController extends ChangeNotifier {
 
   /// 当前实际生效的调色板。
   AppPalette get effectivePalette => switch (effectiveStyle) {
-        AppThemeStyle.dark => AppPalette.dark,
-        AppThemeStyle.editorial => AppPalette.editorial,
-        _ => AppPalette.light,
-      };
+    AppThemeStyle.dark => AppPalette.dark,
+    AppThemeStyle.editorial => AppPalette.editorial,
+    _ => AppPalette.light,
+  };
 
   /// 交给 MaterialApp 的模式（editorial 也映射到 light 基线）。
-  ThemeMode get materialThemeMode => effectiveStyle == AppThemeStyle.dark
-      ? ThemeMode.dark
-      : ThemeMode.light;
+  ThemeMode get materialThemeMode =>
+      effectiveStyle == AppThemeStyle.dark ? ThemeMode.dark : ThemeMode.light;
 
   bool get isEditorial => effectiveStyle == AppThemeStyle.editorial;
 }

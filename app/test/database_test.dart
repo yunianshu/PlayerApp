@@ -17,7 +17,9 @@ void main() {
     setUp(() {
       // 每个用例独立的库文件。sqflite 默认 singleInstance 会复用同名连接，
       // ':memory:' 在用例间串数据，必须用唯一文件名隔离。
-      db = RunDatabase(name: 'runtrail_test_${DateTime.now().microsecondsSinceEpoch}.db');
+      db = RunDatabase(
+        name: 'runtrail_test_${DateTime.now().microsecondsSinceEpoch}.db',
+      );
     });
 
     tearDown(() => db.close());
@@ -34,7 +36,12 @@ void main() {
       );
       final points = [
         RunPoint(lat: 39.0, lng: 116.0, altitude: 10, time: start),
-        RunPoint(lat: 39.001, lng: 116.0, altitude: 12, time: start.add(const Duration(minutes: 1))),
+        RunPoint(
+          lat: 39.001,
+          lng: 116.0,
+          altitude: 12,
+          time: start.add(const Duration(minutes: 1)),
+        ),
       ];
       final id = await db.insertRun(record, points);
       expect(id, greaterThan(0));

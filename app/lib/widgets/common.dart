@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
@@ -67,7 +69,7 @@ class RingMetric extends StatelessWidget {
                 ),
                 duration: const Duration(milliseconds: 600),
                 curve: Curves.easeOutCubic,
-                builder: (_, v, __) => CircularProgressIndicator(
+                builder: (_, v, child) => CircularProgressIndicator(
                   value: v,
                   strokeWidth: 4,
                   strokeCap: StrokeCap.round,
@@ -92,7 +94,10 @@ class RingMetric extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(fontSize: 9, color: scaleAlpha(Colors.white, 0.8)),
+              style: TextStyle(
+                fontSize: 9,
+                color: scaleAlpha(Colors.white, 0.8),
+              ),
             ),
           ],
         ),
@@ -113,7 +118,7 @@ class AppCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(16),
-    this.radius = 22,
+    this.radius = AppRadius.md,
     this.inverse = false,
   });
 
@@ -202,7 +207,7 @@ class MetricTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           color: editorial ? Colors.transparent : c.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: editorial ? Border.all(color: c.stroke) : null,
           boxShadow: editorial
               ? null
@@ -263,10 +268,13 @@ class GradientProgress extends StatelessWidget {
             Container(color: trackColor ?? (editorial ? c.stroke : c.surface2)),
             // 进度变化时平滑过渡；非有限值（如目标为 0 的除法结果）按 0 处理。
             TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: value.isFinite ? value.clamp(0, 1) : 0),
+              tween: Tween(
+                begin: 0,
+                end: value.isFinite ? value.clamp(0, 1) : 0,
+              ),
               duration: const Duration(milliseconds: 600),
               curve: Curves.easeOutCubic,
-              builder: (_, v, __) => FractionallySizedBox(
+              builder: (_, v, child) => FractionallySizedBox(
                 widthFactor: v,
                 child: Container(
                   decoration: BoxDecoration(
@@ -301,9 +309,20 @@ class PrimaryButton extends StatelessWidget {
       color: Colors.transparent,
       child: Ink(
         decoration: BoxDecoration(
-          gradient: editorial ? null : accentGradient(c),
+          // 渐变两端各加深：亮色端（原 accent/accent2）与白字对比不足
+          // （浅色主题 accent2 端 1.76、暗色主题 accent 端 2.82）。
+          gradient: editorial
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color.lerp(c.accent, Colors.black, 0.25)!,
+                    Color.lerp(c.accent, Colors.black, 0.40)!,
+                  ],
+                ),
           color: editorial ? c.inverseSurface : null,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           boxShadow: editorial
               ? null
               : [
@@ -316,7 +335,7 @@ class PrimaryButton extends StatelessWidget {
         ),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 16),
             alignment: Alignment.center,
@@ -345,6 +364,7 @@ class PrimaryButton extends StatelessWidget {
 }
 
 /// 次级按钮（编辑风：透明底 + 发丝边框）。
+/// 文字用主文字色保证对比度（次级灰在浅色/编辑风下不足 4.5:1）。
 class GhostButton extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
@@ -357,18 +377,18 @@ class GhostButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final editorial = c.isEditorial;
-    final fg = color ?? c.textSecondary;
+    final fg = color ?? c.textPrimary;
     return Material(
       color: editorial ? Colors.transparent : c.surface,
       shape: editorial
           ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               side: BorderSide(color: c.stroke),
             )
-          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 14),
           alignment: Alignment.center,
@@ -422,4 +442,163 @@ class CircleBtn extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 呼吸脉冲图标：等待类状态（GPS 搜索等）的动画反馈，
+/// 借鉴 Keep 的 rt_home_gps_searching 交互（原生实现，不使用其素材）。
+class PulsingIcon extends StatefulWidget {
+  const PulsingIcon(
+    this.icon, {
+    super.key,
+    this.size = 12,
+    this.color,
+  });
+
+  final IconData icon;
+  final double size;
+  final Color? color;
+
+  @override
+  State<PulsingIcon> createState() => _PulsingIconState();
+}
+
+class _PulsingIconState extends State<PulsingIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.45, end: 1).animate(
+        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+      ),
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 1, end: 1.25).animate(
+          CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+        ),
+        child: Icon(widget.icon, size: widget.size, color: widget.color),
+      ),
+    );
+  }
+}
+
+/// 完成庆祝粒子（借鉴 Keep 完赛撒花交互，原生实现）：一次性从顶部两侧
+/// 喷出彩色纸屑，2.4 秒后自然消失，不遮挡交互。
+class ConfettiBurst extends StatefulWidget {
+  const ConfettiBurst({super.key});
+
+  @override
+  State<ConfettiBurst> createState() => _ConfettiBurstState();
+}
+
+class _ConfettiBurstState extends State<ConfettiBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+  late final List<_ConfettiPiece> _pieces;
+
+  @override
+  void initState() {
+    super.initState();
+    final random = math.Random(7);
+    _pieces = List.generate(64, (_) => _ConfettiPiece(random));
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_controller.isAnimating && _controller.isCompleted) {
+      return const SizedBox.shrink();
+    }
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => CustomPaint(
+          painter: _ConfettiPainter(_pieces, _controller.value),
+          size: Size.infinite,
+        ),
+      ),
+    );
+  }
+}
+
+class _ConfettiPiece {
+  _ConfettiPiece(math.Random random)
+    : startX = random.nextDouble(),
+      delay = random.nextDouble() * 0.3,
+      speed = 0.5 + random.nextDouble() * 0.6,
+      drift = (random.nextDouble() - 0.5) * 0.35,
+      size = 4 + random.nextDouble() * 5,
+      colorIndex = random.nextInt(5),
+      rotation = random.nextDouble() * math.pi;
+
+  final double startX;
+  final double delay;
+  final double speed;
+  final double drift;
+  final double size;
+  final int colorIndex;
+  final double rotation;
+}
+
+class _ConfettiPainter extends CustomPainter {
+  _ConfettiPainter(this.pieces, this.t);
+
+  final List<_ConfettiPiece> pieces;
+  final double t;
+
+  static const _colors = [
+    Color(0xFFFF6B6B),
+    Color(0xFFFFD93D),
+    Color(0xFF6BCB77),
+    Color(0xFF4D96FF),
+    Color(0xFFFF9F45),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final p in pieces) {
+      final local = (t - p.delay) / (1 - p.delay);
+      if (local <= 0 || local >= 1) continue;
+      // 抛物线下落：先上抛后落，整体淡出。
+      final progress = Curves.easeOut.transform(local.clamp(0, 1));
+      final fade = (1 - local).clamp(0.0, 1.0);
+      final x = (p.startX + p.drift * progress) * size.width;
+      final y = size.height * 0.15 * p.speed * (1 - progress) +
+          size.height * 0.8 * progress * progress * p.speed;
+      final paint = Paint()..color = scaleAlpha(_colors[p.colorIndex], fade);
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(p.rotation + progress * 2);
+      canvas.drawRect(
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: p.size,
+          height: p.size * 0.6,
+        ),
+        paint,
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ConfettiPainter old) => old.t != t;
 }

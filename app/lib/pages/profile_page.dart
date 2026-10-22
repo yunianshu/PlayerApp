@@ -3,17 +3,29 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
+import '../services/backup_service.dart';
+import '../services/diagnostics.dart';
+import '../services/badges.dart';
+import '../services/file_pick.dart';
+import '../services/gpx.dart';
+import '../services/share_service.dart';
+import '../widgets/badges_card.dart';
+import '../widgets/goal_dialog.dart';
+import '../widgets/load_error_page.dart';
+import '../widgets/settings_sheets.dart';
+
+import '../core/i18n.dart';
 import '../core/prefs.dart';
 import '../core/theme.dart';
 import '../core/theme_controller.dart';
 import '../data/database.dart';
 import '../models/run_record.dart';
 import '../services/app_data.dart';
+import '../services/tracking_policies.dart';
 import '../widgets/common.dart';
 
-/// 我的：累计统计、年度目标、成就徽章、设置（主题切换 / 周目标 / 数据导出）。
+/// 我的：累计统计、年度目标、成就徽章、设置（记录/通用/数据）。
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
@@ -26,6 +38,10 @@ class _ProfilePageState extends State<ProfilePage> {
   List<RunRecord> _all = const [];
   double _weeklyGoal = 20;
   double _yearlyGoal = 500;
+  bool _autoPause = false;
+  bool _keepScreenOn = true;
+  bool _loadError = false;
+  int _loadVersion = 0;
 
   @override
   void initState() {
@@ -43,28 +59,36 @@ class _ProfilePageState extends State<ProfilePage> {
   void _onDataChanged() => _load();
 
   Future<void> _load() async {
-    await Prefs.instance.load();
-    final db = RunDatabase.instance;
-    final totals = await db.totals();
-    final runs = await db.listRuns();
-    if (!mounted) return;
-    setState(() {
-      _totals = totals;
-      _all = runs;
-      _weeklyGoal = Prefs.instance.weeklyGoalKm;
-      _yearlyGoal = Prefs.instance.yearlyGoalKm;
-    });
+    final version = ++_loadVersion;
+    setState(() => _loadError = false);
+    try {
+      await Prefs.instance.load();
+      final results = await Future.wait([
+        RunDatabase.instance.totals(),
+        RunDatabase.instance.listRuns(),
+      ]);
+      if (!mounted || version != _loadVersion) return;
+      setState(() {
+        _totals = results[0] as (double, int, int);
+        _all = results[1] as List<RunRecord>;
+        _weeklyGoal = Prefs.instance.weeklyGoalKm;
+        _yearlyGoal = Prefs.instance.yearlyGoalKm;
+        _autoPause = Prefs.instance.autoPauseEnabled;
+        _keepScreenOn = Prefs.instance.keepScreenOn;
+      });
+    } catch (_) {
+      if (mounted && version == _loadVersion) setState(() => _loadError = true);
+    }
   }
 
   Future<void> _exportCsv() async {
     if (_all.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有跑步记录可以导出')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('还没有跑步记录可以导出'.tr)));
       return;
     }
     final buf = StringBuffer(
-      'date,start,end,distance_km,duration_s,avg_pace,calories,climb_m\n',
+      'date,start,end,distance_km,duration_s,avg_pace,calories,climb_m,source,title\n',
     );
     for (final r in _all) {
       buf.writeln(
@@ -72,7 +96,8 @@ class _ProfilePageState extends State<ProfilePage> {
         '${r.start.toIso8601String()},${r.end.toIso8601String()},'
         '${r.distanceKm.toStringAsFixed(3)},${r.durationS},'
         '${r.avgPaceSecPerKm.toStringAsFixed(1)},'
-        '${r.calories},${r.climbM.toStringAsFixed(1)}',
+        '${r.calories},${r.climbM.toStringAsFixed(1)},'
+        '${r.source},"${r.title.replaceAll('"', '""')}"',
       );
     }
     try {
@@ -82,15 +107,101 @@ class _ProfilePageState extends State<ProfilePage> {
         '${dir.path}/runtrail_${DateTime.now().millisecondsSinceEpoch}.csv',
       );
       await file.writeAsString(buf.toString());
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        subject: 'RunTrail 跑步记录',
-      );
+      await ShareService.file(file.path, subject: 'RunTrail 跑步记录');
     } catch (_) {
       if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('导出失败，请重试'.tr)));
+    }
+  }
+
+  Future<void> _backup() async {
+    try {
+      final json = await BackupService.exportJson();
+      final dir = await getTemporaryDirectory();
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File('${dir.path}/runtrail_backup_$stamp.json');
+      await file.writeAsString(json, flush: true);
+      await ShareService.file(file.path, subject: 'RunTrail 备份');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('备份已生成，选择保存位置'.tr)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('备份失败，请重试'.tr)));
+    }
+  }
+
+  Future<void> _restore() async {
+    final path = await FilePickService.pickJson();
+    if (path == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('未选择文件或当前平台不支持文件选择'.tr)));
+      return;
+    }
+    try {
+      final json = await File(path).readAsString();
+      final result = await BackupService.restoreJson(json);
+      AppData.instance.bump();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('导出失败，请重试')),
+        SnackBar(
+          content: Text(
+            result.skipped > 0
+                ? '${'恢复完成'.tr} · ${result.imported} ${'条'.tr} · ${'跳过'.tr} ${result.skipped}'
+                : '${'恢复完成'.tr} · ${result.imported} ${'条'.tr}',
+          ),
+        ),
       );
+    } on BackupFormatException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('备份文件格式不正确'.tr)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('恢复失败，请重试'.tr)));
+    }
+  }
+
+  /// 从 GPX 文件导入一次跑步（Keep / Strava / Garmin 等平台导出）。
+  /// 会话 ID 由开始时间推导，重复导入同一文件会幂等跳过。
+  Future<void> _importGpx() async {
+    final path = await FilePickService.pickJson();
+    if (path == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('未选择文件或当前平台不支持文件选择'.tr)));
+      return;
+    }
+    try {
+      final xml = await File(path).readAsString();
+      final outcome = await importRunFromGpx(xml);
+      if (outcome.isDuplicate) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('这条 GPX 记录之前已导入过'.tr)));
+        return;
+      }
+      AppData.instance.bump();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${'GPX 导入完成'.tr} · ${(outcome.import.record.distanceKm).toStringAsFixed(2)} ${'公里'.tr}',
+          ),
+        ),
+      );
+    } on GpxFormatException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('GPX 文件不正确或缺少时间信息'.tr)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('恢复失败，请重试'.tr)));
     }
   }
 
@@ -98,59 +209,14 @@ class _ProfilePageState extends State<ProfilePage> {
     required String title,
     required double current,
     required Future<void> Function(double) onSave,
-  }) async {
-    final c = context.colors;
-    final controller = TextEditingController(text: current.toStringAsFixed(0));
-    final ok = await showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: c.surface,
-        title: Text(
-          title,
-          style: TextStyle(fontSize: 17, color: c.textPrimary),
-        ),
-        content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          autofocus: true,
-          style: TextStyle(color: c.textPrimary),
-          decoration: InputDecoration(
-            suffixText: 'km',
-            suffixStyle: TextStyle(color: c.textSecondary),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: c.accent),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('取消', style: TextStyle(color: c.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(ctx, double.tryParse(controller.text)),
-            child: Text('保存', style: TextStyle(color: c.accent)),
-          ),
-        ],
-      ),
-    );
-    // 对话框退场动画期间 TextField 仍持有控制器，延迟释放避免 use-after-dispose。
-    Future.delayed(const Duration(seconds: 1), controller.dispose);
-    if (!mounted) return;
-    if (ok == null) return; // 取消
-    // 输入非法时给出反馈，而不是静默忽略。
-    if (ok <= 0 || ok > 1000) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入 1 - 1000 之间的公里数')),
-      );
-      return;
-    }
-    await onSave(ok);
-  }
+  }) => showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => GoalDialog(title: title, current: current, onSave: onSave),
+  );
 
   Future<void> _editWeeklyGoal() => _editGoal(
-    title: '每周目标（公里）',
+    title: '每周目标（公里）'.tr,
     current: _weeklyGoal,
     onSave: (v) async {
       await Prefs.instance.setWeeklyGoal(v);
@@ -161,7 +227,7 @@ class _ProfilePageState extends State<ProfilePage> {
   );
 
   Future<void> _editYearlyGoal() => _editGoal(
-    title: '年度目标（公里）',
+    title: '年度目标（公里）'.tr,
     current: _yearlyGoal,
     onSave: (v) async {
       await Prefs.instance.setYearlyGoal(v);
@@ -170,14 +236,38 @@ class _ProfilePageState extends State<ProfilePage> {
     },
   );
 
+  Future<void> _toggleAutoPause(bool v) async {
+    try {
+      await Prefs.instance.setAutoPause(v);
+      if (!mounted) return;
+      setState(() => _autoPause = v);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+    }
+  }
+
+  Future<void> _toggleKeepScreenOn(bool v) async {
+    try {
+      await Prefs.instance.setKeepScreenOn(v);
+      if (!mounted) return;
+      setState(() => _keepScreenOn = v);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+    }
+  }
+
   Future<void> _pickTheme() async {
-    final c = context.colors;
+    final c = context.readColors;
     final tc = context.read<ThemeController>();
     final picked = await showModalBottomSheet<AppThemeMode>(
       context: context,
       backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
       ),
       builder: (ctx) {
         final cc = ctx.colors;
@@ -188,7 +278,7 @@ class _ProfilePageState extends State<ProfilePage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '外观主题',
+                  '外观主题'.tr,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -197,15 +287,27 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '自动模式：白天清透玻璃，夜间高燃运动',
+                  '自动模式：白天清透玻璃，夜间高燃运动'.tr,
                   style: TextStyle(fontSize: 12, color: cc.textSecondary),
                 ),
                 const SizedBox(height: 14),
                 for (final (m, label, icon) in [
-                  (AppThemeMode.auto, '跟随时间自动', Icons.brightness_auto_outlined),
-                  (AppThemeMode.light, '白天 · 清透玻璃', Icons.light_mode_outlined),
-                  (AppThemeMode.dark, '夜间 · 高燃运动', Icons.dark_mode_outlined),
-                  (AppThemeMode.editorial, '主题一 · 编辑风', Icons.article_outlined),
+                  (
+                    AppThemeMode.auto,
+                    '跟随时间自动'.tr,
+                    Icons.brightness_auto_outlined,
+                  ),
+                  (
+                    AppThemeMode.light,
+                    '白天 · 清透玻璃'.tr,
+                    Icons.light_mode_outlined,
+                  ),
+                  (AppThemeMode.dark, '夜间 · 高燃运动'.tr, Icons.dark_mode_outlined),
+                  (
+                    AppThemeMode.editorial,
+                    '主题一 · 编辑风'.tr,
+                    Icons.article_outlined,
+                  ),
                 ])
                   ListTile(
                     leading: Icon(icon, color: cc.accent),
@@ -228,7 +330,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _showAbout() {
-    final c = context.colors;
+    final c = context.readColors;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -238,13 +340,13 @@ class _ProfilePageState extends State<ProfilePage> {
           style: TextStyle(fontSize: 17, color: c.textPrimary),
         ),
         content: Text(
-          'v1.0 · 第一期\n\n纯本地跑步记录应用：GPS 轨迹、里程、配速、卡路里，数据仅保存在本机，无需联网与账号。',
+          'v${Diagnostics.appVersion} · 第二期\n\n纯本地跑步记录应用：GPS 轨迹、里程、配速、卡路里，支持语音播报、自动暂停、手动补录、个人纪录与数据备份；数据仅保存在本机，无需联网与账号。',
           style: TextStyle(fontSize: 13, color: c.textSecondary, height: 1.6),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('好', style: TextStyle(color: c.accent)),
+            child: Text('好'.tr, style: TextStyle(color: c.accent)),
           ),
         ],
       ),
@@ -253,6 +355,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<LocaleController>();
+    if (_loadError) return LoadErrorPage(onRetry: _load);
     final c = context.colors;
     final totals = _totals;
     final totalKm = totals?.$1 ?? 0;
@@ -260,31 +364,43 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       body: Backdrop(
         child: SafeArea(
+          top: false,
           bottom: false,
           child: ListView(
             physics: dampedPhysics,
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
-          children: [
-            _header(c),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _stat(c, '累计里程', totalKm.toStringAsFixed(1)),
-                const SizedBox(width: 10),
-                _stat(c, '总时长', totals == null ? '—' : _hours(totals.$2)),
-                const SizedBox(width: 10),
-                _stat(c, '累计次数', (totals?.$3 ?? 0).toString()),
-              ],
+            padding: EdgeInsets.fromLTRB(
+              20,
+              MediaQuery.of(context).padding.top + 8,
+              20,
+              110,
             ),
-            const SizedBox(height: 12),
-            _goalCard(c, totalKm),
-            const SizedBox(height: 12),
-            _badges(c, totalKm),
-            const SizedBox(height: 12),
-            _settings(c, tc),
-          ],
+            children: [
+              _header(c),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _stat(c, '累计里程'.tr, totalKm.toStringAsFixed(1)),
+                  const SizedBox(width: 10),
+                  _stat(c, '总时长'.tr, totals == null ? '—' : _hours(totals.$2)),
+                  const SizedBox(width: 10),
+                  _stat(c, '累计次数'.tr, (totals?.$3 ?? 0).toString()),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _goalCard(c),
+              const SizedBox(height: 12),
+              BadgesCard(unlocked: unlockedBadges(badgeContext(_all))),
+              const SizedBox(height: 12),
+              _goalSettings(c),
+              const SizedBox(height: 12),
+              _recordSettings(c),
+              const SizedBox(height: 12),
+              _generalSettings(c, tc),
+              const SizedBox(height: 12),
+              _dataSettings(c),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -320,7 +436,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 Row(
                   children: [
                     Text(
-                      '跑者',
+                      '跑者'.tr,
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -335,7 +451,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       decoration: BoxDecoration(
                         color: c.accentSoft,
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Text(
                         'LV${_level()}',
@@ -350,7 +466,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '累计跑步 ${_days()} 天',
+                  '${'累计跑步'.tr} ${_days()} ${'天'.tr}',
                   style: TextStyle(fontSize: 11, color: c.textSecondary),
                 ),
               ],
@@ -388,7 +504,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Expanded(
       child: AppCard(
         padding: const EdgeInsets.symmetric(vertical: 14),
-        radius: 18,
+        radius: AppRadius.md,
         child: Column(
           children: [
             Text(
@@ -408,9 +524,13 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _goalCard(AppPalette c, double km) {
+  Widget _goalCard(AppPalette c) {
+    final now = DateTime.now();
+    final yearKm = _all
+        .where((r) => r.start.year == now.year)
+        .fold<double>(0, (sum, r) => sum + r.distanceKm);
     final yearGoal = _yearlyGoal;
-    final pct = yearGoal > 0 ? (km / yearGoal).clamp(0.0, 1.0) : 0.0;
+    final pct = yearGoal > 0 ? (yearKm / yearGoal).clamp(0.0, 1.0) : 0.0;
     final editorial = c.isEditorial;
     // 编辑风：深色反转卡（墨底 + 荧光绿进度与百分比）。
     final fg = editorial ? c.onInverse : c.textPrimary;
@@ -442,7 +562,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '年度目标',
+                    '年度目标'.tr,
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -463,15 +583,13 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 10),
           Text(
-            '${km.toStringAsFixed(1)} / ${yearGoal.toStringAsFixed(0)} 公里 · 还差 ${(yearGoal - km).abs().toStringAsFixed(1)} 公里',
+            '${yearKm.toStringAsFixed(1)} / ${Prefs.formatGoal(yearGoal)} km · ${'还差'.tr} ${(yearGoal - yearKm).clamp(0, double.infinity).toStringAsFixed(1)} km',
             style: TextStyle(fontSize: 11, color: muted),
           ),
           const SizedBox(height: 12),
           GradientProgress(
             value: pct,
-            trackColor: editorial
-                ? scaleAlpha(c.onInverse, 0.2)
-                : null,
+            trackColor: editorial ? scaleAlpha(c.onInverse, 0.2) : null,
             fillColor: editorial ? c.onInverseAccent : null,
           ),
         ],
@@ -479,75 +597,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _badges(AppPalette c, double km) {
-    final badges = [
-      ('首跑完成', Icons.flag_outlined, km >= 0.01),
-      ('十公里', Icons.emoji_events_outlined, km >= 10),
-      ('百公里', Icons.military_tech_outlined, km >= 100),
-      ('半马挑战', Icons.workspace_premium_outlined, km >= 210.975),
-    ];
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '成就徽章',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: c.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              for (final (name, icon, ok) in badges)
-                SizedBox(
-                  width: 70,
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: ok ? c.accentSoft : c.surface2,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: ok ? c.accentStroke : c.stroke,
-                          ),
-                        ),
-                        child: Icon(
-                          icon,
-                          size: 20,
-                          color: ok ? c.accent : c.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        name,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: ok ? c.textPrimary : c.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _settings(AppPalette c, ThemeController tc) {
-    final themeLabel = switch (tc.mode) {
-      AppThemeMode.auto => '自动',
-      AppThemeMode.light => '白天',
-      AppThemeMode.dark => '夜间',
-      AppThemeMode.editorial => '编辑风',
-    };
+  Widget _goalSettings(AppPalette c) {
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -555,30 +605,208 @@ class _ProfilePageState extends State<ProfilePage> {
           _row(
             c,
             Icons.adjust,
-            '每周目标',
-            '${_weeklyGoal.toStringAsFixed(0)} km',
+            '每周目标'.tr,
+            '${Prefs.formatGoal(_weeklyGoal)} km',
             onTap: _editWeeklyGoal,
           ),
           Divider(height: 1, color: c.divider),
           _row(
             c,
             Icons.emoji_events_outlined,
-            '年度目标',
-            '${_yearlyGoal.toStringAsFixed(0)} km',
+            '年度目标'.tr,
+            '${Prefs.formatGoal(_yearlyGoal)} km',
             onTap: _editYearlyGoal,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _recordSettings(AppPalette c) {
+    final paceTarget = Prefs.instance.paceTargetSecPerKm;
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => _toggleAutoPause(!_autoPause),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: const BoxDecoration(
+                      color: Colors.transparent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.pause_circle_outline,
+                      size: 15,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '自动暂停'.tr,
+                          style: TextStyle(fontSize: 13, color: c.textPrimary),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '停止移动约 10 秒自动暂停，恢复跑动自动继续'.tr,
+                          style: TextStyle(fontSize: 10, color: c.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Flutter 3.47 弃用 activeColor；鸿蒙 3.22 无 activeThumbColor。
+                  Switch(
+                    value: _autoPause,
+                    // ignore: deprecated_member_use
+                    activeColor: c.accent,
+                    onChanged: _toggleAutoPause,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Divider(height: 1, color: c.divider),
+          InkWell(
+            onTap: () => _toggleKeepScreenOn(!_keepScreenOn),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              child: Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: const BoxDecoration(
+                      color: Colors.transparent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.brightness_high,
+                      size: 15,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '跑步时屏幕常亮'.tr,
+                          style: TextStyle(fontSize: 13, color: c.textPrimary),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '关闭后可息屏省电，实时成绩仍在锁屏通知显示'.tr,
+                          style: TextStyle(fontSize: 10, color: c.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _keepScreenOn,
+                    // ignore: deprecated_member_use
+                    activeColor: c.accent,
+                    onChanged: _toggleKeepScreenOn,
+                  ),
+                ],
+              ),
+            ),
           ),
           Divider(height: 1, color: c.divider),
           _row(
             c,
+            Icons.volume_up_outlined,
+            '语音播报'.tr,
+            Prefs.instance.voiceEnabled ? '开'.tr : '关'.tr,
+            onTap: () => showVoiceSettingsDialog(context),
+          ),
+          Divider(height: 1, color: c.divider),
+          _row(
+            c,
+            Icons.speed_outlined,
+            '配速提醒'.tr,
+            paceTarget > 0 ? formatPaceInput(paceTarget) : '关'.tr,
+            onTap: () => showPaceTargetDialog(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _generalSettings(AppPalette c, ThemeController tc) {
+    final themeLabel = switch (tc.mode) {
+      AppThemeMode.auto => '自动'.tr,
+      AppThemeMode.light => '白天'.tr,
+      AppThemeMode.dark => '夜间'.tr,
+      AppThemeMode.editorial => '编辑风'.tr,
+    };
+    final langLabel = switch (LocaleController.instance.pref) {
+      AppLanguage.system => '跟随系统'.tr,
+      AppLanguage.zh => '中文'.tr,
+      AppLanguage.en => 'English',
+    };
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          _row(
+            c,
             Icons.brightness_6_outlined,
-            '外观主题',
+            '外观主题'.tr,
             themeLabel,
             onTap: _pickTheme,
           ),
           Divider(height: 1, color: c.divider),
-          _row(c, Icons.download_outlined, '数据导出', 'CSV', onTap: _exportCsv),
+          _row(
+            c,
+            Icons.translate_outlined,
+            '语言'.tr,
+            langLabel,
+            onTap: () => showLanguageDialog(context),
+          ),
           Divider(height: 1, color: c.divider),
-          _row(c, Icons.info_outline, '关于跑迹', 'v1.0', onTap: _showAbout),
+          _row(
+            c,
+            Icons.bug_report_outlined,
+            '诊断日志'.tr,
+            '',
+            onTap: () => showDiagnosticsDialog(context),
+          ),
+          Divider(height: 1, color: c.divider),
+          _row(
+            c,
+            Icons.info_outline,
+            '关于跑迹'.tr,
+            'v${Diagnostics.appVersion}',
+            onTap: _showAbout,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dataSettings(AppPalette c) {
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          _row(c, Icons.download_outlined, '数据导出'.tr, 'CSV', onTap: _exportCsv),
+          Divider(height: 1, color: c.divider),
+          _row(c, Icons.upload_file_outlined, '从 GPX 导入'.tr, 'GPX', onTap: _importGpx),
+          Divider(height: 1, color: c.divider),
+          _row(c, Icons.ios_share, '备份数据'.tr, 'JSON', onTap: _backup),
+          Divider(height: 1, color: c.divider),
+          _row(c, Icons.restore_outlined, '从文件恢复'.tr, '', onTap: _restore),
         ],
       ),
     );

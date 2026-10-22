@@ -1,49 +1,40 @@
-# iOS 构建指南
+# iOS 构建与验收
 
-iOS 工程（`app/ios/`）已完成全部可配置项，因 iOS 编译强制要求 macOS + Xcode，
-需在 Mac 上执行最终构建。本机（Windows）无法产出 .ipa，这是平台限制，不是项目缺陷。
+工程位于 `app/ios/`，最低部署版本为 iOS 15。当前 Xcode 工程通过 `FlutterGeneratedPluginSwiftPackage` 集成 Flutter 插件；仓库没有 Podfile。Windows 无法完成 Xcode 构建，以下步骤需在 Mac 执行。
 
-## 已完成的配置
+## 使用当前工程构建
 
-- `Info.plist`：
-  - `CFBundleDisplayName` = 跑迹 RunTrail
-  - `NSLocationWhenInUseUsageDescription` / `NSLocationAlwaysAndWhenInUseUsageDescription`
-    / `NSLocationAlwaysUsageDescription`（定位权限文案）
-  - `NSMotionUsageDescription`（运动传感器）
-  - `UIBackgroundModes` 包含 `location`（跑步中后台持续定位）
-- 应用图标：`ios/Runner/Assets.xcassets/AppIcon.appiconset/` 已由
-  flutter_launcher_icons 生成全套（21 张 PNG + Contents.json），使用设计稿导出的
-  1024×1024 主图标（靛蓝→青渐变 + 白色轨迹标记，无透明通道，符合 App Store 要求）。
-- 代码无平台特定 API：geolocator / sqflite / share_plus / wakelock_plus /
-  path_provider / shared_preferences 均原生支持 iOS。
+安装与主工程一致的 Flutter 3.47.5 工具链，以及其支持的 Xcode 版本，然后执行：
 
-## 在 macOS 上构建
-
-```bash
-# 1. 安装 Flutter（与主工程同版本），然后：
+```sh
 cd app
+flutter doctor -v
 flutter pub get
-
-# 2. 首次需安装 CocoaPods 依赖
-cd ios && pod install --repo-update && cd ..
-
-# 3. 打开 Xcode 配置签名
+flutter analyze --no-pub
+flutter test --no-pub
+flutter build ios --simulator --debug
 open ios/Runner.xcworkspace
-#    Signing & Capabilities → 选择 Team（个人开发者账号即可真机调试）
-
-# 4. 构建
-flutter build ios --debug          # 模拟器/真机调试
-flutter build ipa                  # 发布包（Archive，需有效签名）
-
-# 5. 跑测试
-flutter test
 ```
 
-## 真机调试注意事项
+在 Xcode 的 Runner → Signing & Capabilities 中选择自己的 Team，检查 Bundle Identifier、证书和设备授权。确认 Background Modes 包含 Location updates。签名准备完成后：
 
-- iOS 模拟器**没有 GPS 硬件**，跑步轨迹需用模拟器的
-  Features → Location → City Run / Freeway Drive 模拟，或真机测试。
-- 后台定位（锁屏继续记录）需要 Signing 里勾选 Background Modes → Location updates
-  （Info.plist 已声明，Xcode 勾选后会自动写入 entitlements）。
-- App Store 审核需要隐私清单（Privacy Manifest）：所用插件近期版本均已自带
-  （geolocator 13+/shared_preferences 2.3+/sqflite 2.3.3+），无需额外处理。
+```sh
+flutter build ios --debug
+flutter build ipa --release
+```
+
+IPA 位于 `build/ios/ipa/`。本次修复未在 Mac 执行以上构建，实际 Xcode/插件兼容性需以该环境的结果为准。
+
+## Swift Package Manager 与 CocoaPods
+
+先使用仓库现有的 Swift Package Manager 集成。`flutter pub get` 和 Flutter 的 iOS 构建步骤负责生成临时包引用，不需要预先执行 `pod install`。
+
+如果插件明确要求回退 CocoaPods，应在独立分支或备份后处理：在该 Flutter SDK 通过 `flutter config --help` 确认 `--no-enable-swift-package-manager` 选项并关闭 SPM，使用 `flutter create --platforms=ios .` 生成匹配的工程/Podfile，再检查并恢复应用标识、权限文案、图标和签名配置，最后按生成的 Podfile 执行 `pod install`。不要无审阅覆盖平台文件。
+
+## 定位配置与验收
+
+- `Info.plist` 已包含定位授权文案和 `UIBackgroundModes: location`。
+- `RunTracker` 在 iOS 使用 `AppleSettings`，启用 `allowBackgroundLocationUpdates`、后台位置指示器及 fitness 模式，并关闭自动暂停位置更新。
+- 模拟器可用模拟路线检查界面与基本流程；真实定位精度、锁屏续记、权限变化和电量消耗必须真机验证。
+- 对“使用期间”授权、精确位置关闭、权限撤销、锁屏、前后台切换、定位断开恢复逐项测试，确认后台指示器、距离、暂停分段及草稿恢复符合预期。
+- 上架前依据最终依赖与实际数据使用核对归档中的隐私清单、用途文案和隐私申报；插件自带清单不等于应用已自动完成全部上架要求。

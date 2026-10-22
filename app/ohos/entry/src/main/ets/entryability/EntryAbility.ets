@@ -2,11 +2,19 @@ import { FlutterAbility, FlutterEngine, MethodChannel, MethodCall, MethodResult 
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { notificationManager } from '@kit.NotificationKit';
+import notification from '@ohos.notification';
 import { wantAgent, WantAgent } from '@kit.AbilityKit';
+import { textToSpeech } from '@kit.CoreSpeechKit';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 
 export default class EntryAbility extends FlutterAbility {
   private backgroundChannel?: MethodChannel;
+  private ttsEngine?: textToSpeech.TextToSpeechEngine;
+  private ttsLang: string = 'zh-CN';
+  private ttsReady: boolean = false;
+  private ttsCreating: boolean = false;
+  private ttsInitResults: MethodResult[] = [];
 
   configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -17,14 +25,158 @@ export default class EntryAbility extends FlutterAbility {
     this.backgroundChannel.setMethodCallHandler({
       onMethodCall: (call: MethodCall, result: MethodResult) => {
         if (call.method === 'start') {
+          // 请求通知授权（未授权时自定义实时成绩通知无法显示）。
+          notificationManager.requestEnableNotification(this.context).catch(() => {})
           this.startContinuousTask(result)
         } else if (call.method === 'stop') {
+          notificationManager.cancel(1001).catch(() => {})
           this.stopContinuousTask(result)
+        } else if (call.method === 'update') {
+          // 系统长时任务通知内容不可定制；另发一条自定义通知显示实时成绩，
+          // 同 id 重复 publish 即为更新。
+          const text: string = call.argument('text') ?? ''
+          if (text.length > 0) {
+            notificationManager.publish({
+              id: 1001,
+              // SOCIAL_COMMUNICATION 槽位：锁屏可见（Keep 同款行为）；
+              // 默认槽位的通知在部分系统版本锁屏不展示。
+              notificationSlotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
+              content: {
+                // 新旧模块 ContentType 枚举类型不兼容，publish 入参需要旧枚举。
+                contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+                normal: {
+                  title: '跑步记录中',
+                  text: text,
+                  additionalText: '跑迹 RunTrail'
+                }
+              }
+            }).then(() => result.success(null))
+              .catch((err: BusinessError) => {
+                console.error(`live notification publish failed: ${err.code} ${err.message}`)
+                result.success(null)
+              })
+          } else {
+            result.success(null)
+          }
         } else {
           result.notImplemented()
         }
       }
     })
+    // 语音播报通道：CoreSpeechKit 文本转语音（每公里/自动暂停/配速提醒）。
+    const ttsChannel = new MethodChannel(
+      flutterEngine.dartExecutor.getBinaryMessenger(), 'runtrail/tts')
+    ttsChannel.setMethodCallHandler({
+      onMethodCall: (call: MethodCall, result: MethodResult) => {
+        if (call.method === 'init') {
+          const lang: string = call.argument('lang') ?? 'zh-CN'
+          this.initTts(lang, result)
+        } else if (call.method === 'speak') {
+          const text: string = call.argument('text') ?? ''
+          const flush: boolean = call.argument('flush') ?? false
+          this.speakTts(text, flush, result)
+        } else if (call.method === 'stop') {
+          this.stopTts(result)
+        } else {
+          result.notImplemented()
+        }
+      }
+    })
+  }
+
+  private initTts(lang: string, result: MethodResult): void {
+    if (this.ttsReady && this.ttsLang === lang && this.ttsEngine) {
+      result.success(true)
+      return
+    }
+    if (this.ttsCreating) {
+      // 引擎创建中：排队等待完成回调统一答复。
+      this.ttsInitResults.push(result)
+      return
+    }
+    this.ttsCreating = true
+    this.ttsInitResults.push(result)
+    if (this.ttsEngine) {
+      try {
+        this.ttsEngine.shutdown()
+      } catch (err) {
+        console.error(`tts shutdown old engine failed: ${JSON.stringify(err)}`)
+      }
+      this.ttsEngine = undefined
+      this.ttsReady = false
+    }
+    const params: textToSpeech.CreateEngineParams = {
+      language: lang,
+      person: 0,
+      online: 1,
+    }
+    textToSpeech.createEngine(params,
+      (err: BusinessError, engine: textToSpeech.TextToSpeechEngine) => {
+        if (err || !engine) {
+          this.ttsReady = false
+          this.ttsCreating = false
+          console.error(`tts createEngine failed: ${err?.code} ${err?.message}`)
+          this.replyTtsInit(false)
+          return
+        }
+        engine.setListener({
+          onStart: (requestId: string, response: textToSpeech.StartResponse) => {
+          },
+          onComplete: (requestId: string,
+            response: textToSpeech.CompleteResponse) => {
+          },
+          onStop: (requestId: string, response: textToSpeech.StopResponse) => {
+          },
+          onError: (requestId: string, errorCode: number,
+            errorMessage: string) => {
+            console.error(`tts speak failed: ${errorCode} ${errorMessage}`)
+          }
+        })
+        this.ttsEngine = engine
+        this.ttsLang = lang
+        this.ttsReady = true
+        this.ttsCreating = false
+        this.replyTtsInit(true)
+      })
+  }
+
+  private replyTtsInit(ready: boolean): void {
+    const pending = this.ttsInitResults
+    this.ttsInitResults = []
+    for (const result of pending) {
+      result.success(ready)
+    }
+  }
+
+  private speakTts(text: string, flush: boolean, result: MethodResult): void {
+    if (!this.ttsReady || !this.ttsEngine || text.length === 0) {
+      result.success(false)
+      return
+    }
+    if (flush) {
+      // 打断上一条未播完的内容（倒计时逐字播报）。
+      try {
+        this.ttsEngine.stop()
+      } catch (err) {
+        console.error(`tts flush stop failed: ${JSON.stringify(err)}`)
+      }
+    }
+    const speakParams: textToSpeech.SpeakParams = {
+      requestId: `runtrail-${Date.now()}`
+    }
+    this.ttsEngine.speak(text, speakParams)
+    result.success(true)
+  }
+
+  private stopTts(result: MethodResult): void {
+    if (this.ttsEngine) {
+      try {
+        this.ttsEngine.stop()
+      } catch (err) {
+        console.error(`tts stop failed: ${JSON.stringify(err)}`)
+      }
+    }
+    result.success(null)
   }
 
   private startContinuousTask(result: MethodResult): void {
@@ -43,9 +195,8 @@ export default class EntryAbility extends FlutterAbility {
     }).then(() => {
       result.success(null)
     }).catch((err: BusinessError) => {
-      // 申请失败不阻塞跑步本身，仅失去锁屏续记能力。
       console.error(`continuous task start failed: ${err.code} ${err.message}`)
-      result.success(null)
+      result.error('BACKGROUND_START_FAILED', '后台定位启动失败', null)
     })
   }
 
@@ -75,5 +226,18 @@ export default class EntryAbility extends FlutterAbility {
         isNavigationBarLightIcon: false,
       })
     })
+  }
+
+  onDestroy(): void {
+    if (this.ttsEngine) {
+      try {
+        this.ttsEngine.shutdown()
+      } catch (err) {
+        console.error(`tts shutdown failed: ${JSON.stringify(err)}`)
+      }
+      this.ttsEngine = undefined
+      this.ttsReady = false
+    }
+    super.onDestroy()
   }
 }

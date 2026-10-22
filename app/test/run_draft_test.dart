@@ -37,7 +37,14 @@ void main() {
   test('非法/残缺数据返回 null 而不抛异常', () {
     expect(RunDraft.fromMap({}), isNull);
     expect(RunDraft.fromMap({'points': 'not-a-list'}), isNull);
-    expect(RunDraft.fromMap({'points': [[1, 2, 3]]}), isNull); // 行长度不足
+    expect(
+      RunDraft.fromMap({
+        'points': [
+          [1, 2, 3],
+        ],
+      }),
+      isNull,
+    ); // 行长度不足
     expect(RunDraft.fromMap({'points': []}), isNull);
   });
 }

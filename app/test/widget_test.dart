@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // ignore: depend_on_referenced_packages
 
+import 'package:runtrail/core/i18n.dart';
 import 'package:runtrail/core/theme_controller.dart';
 import 'package:runtrail/pages/home_page.dart';
 
@@ -19,8 +20,11 @@ void main() {
   testWidgets('首页启动冒烟测试', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(
-      ChangeNotifierProvider<ThemeController>(
-        create: (_) => ThemeController(),
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeController()),
+          ChangeNotifierProvider.value(value: LocaleController.instance),
+        ],
         child: const MaterialApp(home: HomePage()),
       ),
     );

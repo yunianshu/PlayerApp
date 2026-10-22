@@ -56,6 +56,8 @@ pgyer-fastlane-uploaded-app-info.json
 .flutter-plugins
 build/
 
-# 双 pubspec 工作流（主工程 Dart 3.13 / ohos Dart 3.4）：
-# lock 随构建脚本切换而重写，主版 lock 需在主工具链 pub get 后本地生成，不入库
-app/pubspec.lock
+# 两套应用依赖锁文件均纳入版本管理，鸿蒙构建使用隔离目录。
+tool/ohos.local.json
+signing/
+.hvigor-node/
+**/__pycache__/

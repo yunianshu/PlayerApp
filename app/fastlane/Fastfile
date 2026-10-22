@@ -29,11 +29,31 @@ platform :runtrail do
 
   desc "上传鸿蒙 HAP 到蒲公英（扫码安装）"
   lane :pgyer_hap do |options|
-    upload(
-      file: File.expand_path("../build/ohos/hap/entry-default-signed.hap", __dir__),
+    file = File.expand_path(options[:hap] || "../build/ohos/distribution/entry-default-signed.hap", __dir__)
+    distribution = File.expand_path("../tool/ohos_distribution.py", __dir__)
+    # 新鲜度守卫：fastlane 上传的是 distribution/ 的发布签名包，它只在手动
+    # 运行 ohos_distribution.py sign 时更新；ohos_build.sh 不会刷新它。
+    # 若比最新构建的未签名包旧，说明忘重签名（历史上因此连发多次旧包）。
+    unsigned = File.expand_path(
+      "../build/ohos-workspace/ohos/entry/build/default/outputs/default/entry-default-unsigned.hap",
+      __dir__,
+    )
+    if File.exist?(unsigned) && File.exist?(file) && File.mtime(file) < File.mtime(unsigned)
+      UI.user_error!(
+        "distribution 安装包(#{File.mtime(file)})比最新构建(#{File.mtime(unsigned)})旧——" \
+        "先运行：python tool/ohos_distribution.py sign --unsigned #{unsigned}",
+      )
+    end
+    # release 编译仍可能使用调试签名；发布前验证包内 Profile 和 P12。
+    sh("python", distribution, "check", "--hap", file)
+    result = upload(
+      file: file,
       type: :hap,
       desc: options[:desc] || "跑迹 RunTrail HarmonyOS 测试包",
     )
+    UI.user_error!("蒲公英未返回 buildKey，无法同步发布证书") unless result.is_a?(Hash) && result["buildKey"]
+    sh("python", distribution, "upload-cert", "--hap", file, "--build-key", result["buildKey"])
+    UI.success("鸿蒙安装包和安装清单签名证书已同步")
   end
 
   private_lane :upload do |options|

@@ -1,167 +1,135 @@
-# 鸿蒙（HarmonyOS）构建指南
+# HarmonyOS 构建与验收
 
-跑迹 RunTrail 的鸿蒙端基于 OpenHarmony-SIG 的 Flutter fork（`3.22.0-ohos` 分支，Flutter 3.22 / Dart 3.4）。
-应用代码 `lib/` 已验证与该版本完全兼容（`flutter analyze` 通过，仅 6 条 share_plus 弃用提示）。
+鸿蒙端使用 OpenHarmony-SIG Flutter 3.22 / Dart 3.4，标准 Android/iOS 端使用主 Flutter 工具链。两套依赖和生成文件隔离，应用 `lib/` 共用。本次已在 Windows + DevEco Studio 6.0.2（SDK API 22、hvigor 6.22.3）构建出签名 release HAP；尚无连接设备进行后台定位验收。
 
-**当前状态（2026-09）**：`bash tool/ohos_build.sh release` 已能完整编译出
-`ohos/entry/build/default/outputs/default/entry-default-unsigned.hap`（未签名）。
-剩下唯一一步是配置签名（见「签名与安装」），需要华为账号在 DevEco Studio 里授权。
+## 本机配置
 
-## 已完成的工作
+准备鸿蒙 Flutter SDK、DevEco Studio 6.0.2、Node.js（本次为 v24）和 Python 3.10+。命令行需能执行 `node`、`npm`、`python`。以下命令在 `app/` 运行：
 
-- `ohos/` 平台工程已生成并配置：包名 `com.runtrail.runtrail`、应用名「跑迹 RunTrail」、
-  定位权限（LOCATION / APPROXIMATELY_LOCATION / LOCATION_IN_BACKGROUND / KEEP_BACKGROUND_RUNNING）、
-  应用图标（`AppScope/resources/base/media/app_icon.png`、`entry/.../media/icon.png`）。
-- `pubspec_ohos.yaml`：鸿蒙专用依赖清单（见下表），全部指向社区适配的 git 仓库；
-  另有 `dependency_overrides: web: 0.5.1`（见下文兼容性）。
-- `tool/ohos_build.sh`：一键构建脚本（自动切换 pubspec → 构建 → 还原），
-  并强制 `PUB_CACHE` 与项目同盘（见下文「工具链适配」）。
-- 引擎产物（ohos-arm64 / ohos-x64 的 debug/profile/release）已通过工具下载验证。
+```powershell
+Copy-Item tool/ohos.local.example.json tool/ohos.local.json
+```
 
-## 环境准备（一次性，本机已完成）
+编辑 `tool/ohos.local.json` 中的 `flutter_sdk` 和 `deveco_home` 为实际安装路径。也可通过 `OHOS_FLUTTER_SDK`、`DEVECO_HOME` 覆盖。该本机文件已加入忽略规则。
 
-1. **鸿蒙 Flutter 工具链**：`D:\soft\ohos-flutter-3.22`（3.22.0-ohos 分支，
-   需拉取上游 tag 使 `git describe` 可用，否则 pub 校验失败）。
-2. **DevEco Studio 6.0.2**：`D:\soft\DevEco Studio`，自带
-   - 完整 HarmonyOS 6.0.2 SDK（API 22）：`DevEco Studio\sdk\default`
-   - hvigor 6.22.3：`DevEco Studio\tools\hvigor`
-   - ohpm：`DevEco Studio\tools\ohpm\bin`
-3. **Node.js 18+**（本机 v24）。
-4. **hvigor 包 junction**：`D:\hvigor-node\@ohos\{hvigor,hvigor-ohos-plugin}` →
-   DevEco 自带同名包（见「工具链适配」）。重建方法：
-   ```bat
-   mklink /J "D:\hvigor-node\@ohos\hvigor" "D:\soft\DevEco Studio\tools\hvigor\hvigor"
-   mklink /J "D:\hvigor-node\@ohos\hvigor-ohos-plugin" "D:\soft\DevEco Studio\tools\hvigor\hvigor-ohos-plugin"
-   ```
+缓存默认使用仓库根目录下 `.pub-cache-ohos`；可在配置中增加 `pub_cache`，必须与项目同盘，以兼容上游插件的相对路径处理。脚本为子进程设置缓存，不依赖全局 `PUB_CACHE`。
 
 ## 构建
 
-```bash
-cd app
-bash tool/ohos_build.sh release    # 或 debug
+```powershell
+python tool/ohos_build.py release --analyze
+# 缓存完整时可离线解析 Dart 依赖（npm/ohpm/SDK 仍可能访问网络）
+python tool/ohos_build.py debug --offline
+# 只准备可在 DevEco 打开的工程
+python tool/ohos_build.py --prepare-only
 ```
 
-脚本做的事：
-1. 备份 `pubspec.yaml` / `pubspec.lock`，用 `pubspec_ohos.yaml` 替换
-2. 设置 `PUB_CACHE=D:/AiProject/PlayerApp/.pub-cache-ohos`（与项目同盘）与 `DEVECO_SDK_HOME`
-3. 鸿蒙工具链执行 `flutter pub get` + `flutter build hap`
-4. 还原主 pubspec
+Git Bash 可继续使用 `bash tool/ohos_build.sh release`，该入口调用同一个 Python 脚本。
 
-产物：`ohos/entry/build/default/outputs/default/entry-default-unsigned.hap`
-（配置签名后重新构建即为已签名包）
+脚本在 `app/build/ohos-workspace` 创建工程副本，使用 `pubspec_ohos.yaml` 和独立锁文件，生成插件清单，再构建 HAP。主工程 `pubspec.yaml`、`pubspec.lock`、`.dart_tool` 与插件清单均不被切换。产物复制到 `app/build/ohos/hap/`。
 
-## 工具链适配（踩坑记录，重要）
+不要在构建期间编辑隔离工程：每次重新运行脚本会重建该目录。源代码应编辑 `app/lib`、`app/ohos` 等源目录。脚本使用 `build/.ohos-build-lock` 防止并发；异常会释放锁。若进程被强制终止，确认无构建进程后仅移除这个空锁目录，再重试。
 
-本机 DevEco 6 的 SDK/hvigor 与 ohos-flutter 3.22 自带工具存在多处版本错位，
-已用以下方案打通（均已在仓库/本机落地，勿回退）：
+## 签名与 DevEco
 
-1. **hvigor 双实例问题**：ohos-flutter 自带的 `hvigorw.bat` 用 hvigor 5.2.2（只认
-   API 12 旧布局 SDK），而本机完整 SDK 是 DevEco 6 自带的 API 22 布局 —— 5.2.2 的
-   SDK 扫描器不认识 6.0.2（`osVersionMapper` 无映射），报 `SDK component missing`；
-   DevEco 的 hvigor 6.22.3 又与其不配套。最终方案：`ohos/hvigorw.bat` 直接调用
-   DevEco 自带 `hvigor.js`，并设 `NODE_PATH=D:\hvigor-node`（junction 到 DevEco 的
-   `@ohos/hvigor` + `@ohos/hvigor-ohos-plugin` 物理目录）。
-   **关键**：`hvigorw.bat` 每次先删除 `ohos/node_modules/@ohos`——npm/IDE 同步会把
-   5.2.2 旧版塞回项目 node_modules，包路径一旦与 CLI 不同（即使同版本）就是两个
-   模块实例，hvigor 报 `The root node is not yet available for build`。
-2. **pub 缓存同盘**：`flutter-hvigor-plugin` 用 `path.relative` 把插件路径写成
-   相对路径；项目在 D: 而默认 pub 缓存在 C:，跨盘符回退成绝对路径，hvigor 6 报
-   `The srcPath is not a relative path`。构建脚本因此强制 `PUB_CACHE` 在 D:。
-3. **web 包版本**：Dart 3.4（ohos fork）的 AOT 目标无法编译 web 1.x 的
-   `implements JSObject` 扩展类型写法，`pubspec_ohos.yaml` 中
-   `dependency_overrides: web: 0.5.1`（与 Flutter 3.22 同期）。
-4. **geolocator 补丁**：geolocator v13 鸿蒙分支的 `lib/geolocator.dart` 无条件
-   `export geolocator_web`（引入 package:web，鸿蒙 AOT 编译失败）。应用未用
-   `WebSettings`，已在 pub 缓存副本中移除该导出（`.pub-cache-ohos/git/fluttertpc_geolocator-*/geolocator/lib/geolocator.dart`）。
-   若 pub 缓存清空重拉，需要重新打这个补丁。
-5. `flutter-hvigor-plugin`（SDK 内 `packages/flutter_tools/hvigor`）的
-   `devDependencies.@ohos/hvigor: 5.2.2` 已移除，避免 npm 每次构建把它装进项目。
-6. **`.flutter-plugins-dependencies` 被主工具链覆盖**：在 `app/` 下用标准 Flutter（或
-   主 pubspec）跑一次 `flutter pub get`，该文件会被重写、丢失 `plugins.ohos` 段。
-   之后再在 DevEco 里同步 `ohos/` 工程，`hvigorfile.ts` → `injectNativeModules` →
-   `findFlutterPlugins` 对 `plugins.ohos`（此时为 undefined）调 `.filter`，
-   报 `hvigor ERROR: 00305010 TypeError Cannot read properties of undefined
-   (reading 'filter')`。修法：重跑一次鸿蒙侧 pub get 恢复清单
-   （切 `pubspec_ohos.yaml` + `PUB_CACHE=D:/AiProject/PlayerApp/.pub-cache-ohos`，
-   见 `tool/ohos_build.sh`），再同步即可。DevEco 打开鸿蒙工程期间，
-   保持最后一次 pub get 是鸿蒙工具链执行的。
+公共 `app/ohos/build-profile.json5` 保留无个人信息的配置。需要签名时，把完整签名配置保存为 **`app/ohos/build-profile.local.json5`**，脚本会将其应用到隔离工程。这个文件包含证书路径和签名字段，已加入忽略规则；不要提交证书和口令。本次工作区原有签名配置已保留到该文件。
 
-## 鸿蒙插件源对照表（pubspec_ohos.yaml 已配好）
+新电脑可这样配置：
 
-| 插件 | 鸿蒙来源 |
-|------|---------|
-| geolocator | `gitcode.com/openharmony-sig/fluttertpc_geolocator.git` 分支 `br_geolocator_v13.0.0_ohos` |
-| flutter_geolocator_ohos | 同上仓库，path `geolocator_ohos`（geolocator 的 ohos 实现包，**必须显式依赖**，否则 ohos 端无 GPS 原生模块） |
-| sqflite | `gitcode.com/openharmony-sig/flutter_sqflite.git` path `sqflite` |
-| path_provider | `gitcode.com/openharmony-sig/flutter_packages.git`（ref master）path `packages/path_provider/path_provider` |
-| shared_preferences | 同上，path `packages/shared_preferences/shared_preferences` |
-| share_plus | `gitcode.com/openharmony-sig/flutter_plus_plugins.git` path `packages/share_plus/share_plus` |
-| wakelock_plus | `gitcode.com/openharmony-sig/fluttertpc_wakelock_plus.git` 分支 `br_wakelock_plus_1.2.8_ohos`（3.22 对应分支）path `wakelock_plus` |
-| wakelock_plus_ohos | 同上仓库，path `wakelock_plus/ohos`（防息屏 ohos 实现包，同上必须显式依赖） |
+1. 运行 `python tool/ohos_build.py --prepare-only`。
+2. 在设置了相同 `PUB_CACHE` 和 `DEVECO_HOME` 的环境中启动 DevEco，打开 `app/build/ohos-workspace/ohos`，使用鸿蒙 Flutter SDK。不要打开主目录的 `app/ohos` 直接同步。
+3. 通过 Project Structure → Signing Configs 完成账号授权和签名生成。
+4. 将隔离工程生成的完整 `build-profile.json5` 复制为源目录的 `app/ohos/build-profile.local.json5`，之后重跑构建脚本。
 
-> - geolocator 的 `br_v14.x_ohos` 分支要求 Dart ≥3.5，与 3.22 工具链不匹配，故用 v13。
-> - OpenHarmony-SIG 约定：主包 pubspec 不声明 `platforms.ohos` 时（geolocator / wakelock_plus 即如此），
->   需在应用里显式依赖对应 `*_ohos` 实现包，pub 才会把原生模块写进 `plugins.ohos`。
->   验证方法：`.flutter-plugins-dependencies` 的 `plugins.ohos` 应含
->   `flutter_geolocator_ohos` / `wakelock_plus_ohos` 等 6 项。
+有签名配置时产物为 `entry-default-signed.hap`；未配置时只能使用 unsigned 产物进行编译验证。安装示例：
 
-## 代码兼容性说明
+```powershell
+hdc list targets
+hdc install build/ohos/hap/entry-default-signed.hap
+```
 
-`lib/` 与 Flutter 3.22 的兼容点（已处理）：
+`hdc` 可从 DevEco SDK 工具目录加入当前进程 PATH。
 
-- `Color.withValues()` 是 Flutter 3.27+ API → 已统一换成 `theme.dart` 的 `scaleAlpha()`
-- 分享用 `Share.share()` 静态 API（share_plus v7 鸿蒙版支持）
-- 其余语法（records / patterns / switch 表达式）Dart 3.4 均支持
-- 字体已在 `pubspec_ohos.yaml` 声明（Playfair Display / Noto Sans SC / Inter /
-  Barlow Condensed），三套主题的数字字体在鸿蒙端可正常渲染
+## 蒲公英网页安装
 
-## 签名与安装（唯一剩余步骤，需华为账号）
+**release 编译模式与发布签名是两件事。** `entry-default-signed.hap` 这个文件名只表示经过签名；如果包内 Profile 的 `type` 是 `debug`，仍是调试包。它可以在授权设备上通过 HDC 安装，但不符合蒲公英网页安装的签名要求。
 
-当前产物为**未签名** hap，真机安装需要调试签名：
+蒲公英要求华为签发的发布证书、**指定设备发布** Profile，以及与 HAP 匹配的 P12。平台用 P12 签署下载所需的安装清单，不会替开发者重签 HAP。参考[蒲公英鸿蒙分发说明](https://www.pgyer.com/doc/view/harmonyos)。
 
-1. 用 DevEco Studio 打开 `app/ohos` 工程
-2. File → Project Structure → Signing Configs → 勾选 **Automatically generate signature**
-   （需登录华为账号；DevEco 会生成调试证书并写入 `build-profile.json5` 的
-   `signingConfigs`）
-3. 之后运行 `bash tool/ohos_build.sh debug`（或 release）即可得到**已签名** hap；
-   或直接在 DevEco 里 Run
-4. 命令行安装：`hdc install entry-default-signed.hap`
-   （hdc 在 `hos-sdk-placeholder\12\toolchains\` 或 DevEco SDK `default\openharmony\toolchains\`）
+首次准备（`app/` 目录）：
 
-## DevEco 同步与命令行的缓存统一（2026-09-25）
+```powershell
+python tool/ohos_distribution.py prepare
+```
 
-DevEco Studio 同步时用自己的环境跑 `flutter pub get`，默认 pub 缓存在 **C 盘**，而命令行构建用
-`PUB_CACHE=D:\AiProject\PlayerApp\.pub-cache-ohos`——两边交替运行会把
-`.flutter-plugins-dependencies` / `.dart_tool/package_config.json` 的插件路径在 C:/D 盘之间来回改写，
-C 盘路径跨盘符无法转相对路径 → hvigor 报 `The srcPath is not a relative path`。
+命令会在已忽略的 `signing/harmony-release/` 中生成发布密钥库、随机口令配置和 `runtrail-release.csr`，再次执行会复用现有密钥。**生成 CSR 还不等于取得发布证书。** P12 此时只含本地占位证书，不能直接拿去蒲公英分发。
 
-**永久修复**：已 `setx PUB_CACHE D:\AiProject\PlayerApp\.pub-cache-ohos`（Windows 用户级环境变量）。
-**改完必须重启 DevEco Studio 才生效**；改前已启动的进程仍用旧环境。
+在华为 AppGallery Connect 的“证书、APP ID 和 Profile”中完成：
 
-## JSON5 换行符陷阱（2026-09-25）
+1. 申请**发布证书**，上传 `runtrail-release.csr`；把华为返回的证书链保存为 `signing/harmony-release/runtrail-release.cer`。
+2. 为 `com.runtrail.runtrail` 申请**指定设备发布 Profile**，关联上述发布证书，勾选要安装的设备（包括 P70 的 UDID）；下载为 `signing/harmony-release/runtrail-release.p7b`。
+3. 不要用调试 Profile 或应用市场发布 Profile 代替指定设备发布 Profile；设备授权与权限申请以 AGC 当前要求为准。
 
-ohos-flutter 的 JSON5 解析器不接受 CR 字符（CRLF 换行）。DevEco Studio 保存配置时会把
-`build-profile.json5`、`oh-package.json5`、`module.json5` 等写成 CRLF，导致
-`flutter pub get` / DevEco 同步报 `Parse ohos module.json5 error: JSON5: invalid character`。
-注意报错文案会张冠李戴——`build-profile.json5` 的解析错误也报成 module.json5。
+随后构建、签名并上传：
 
-修法：把 ohos 工程及 pub 缓存里所有 .json5/.json 的 CR 字节删掉（
- 归一为 
-），
-可参考如下思路（os.walk 遍历 + 二进制替换，跳过 node_modules/build/.hvigor）。
-pub 缓存里的插件 module.json5 同理（git autocrlf=true 检出时会转 CRLF）。
-另：DevEco 保存与脚本批处理并发写同一文件可能造成文件截断损坏
-（build-profile.json5 曾被写坏成 storeFile 半行），损坏时按仓库里的模板手工重建。
+```powershell
+python tool/ohos_build.py release --offline
+python tool/ohos_distribution.py sign
+python tool/ohos_distribution.py check
+& 'C:/Ruby33-x64/bin/fastlane.bat' runtrail pgyer_hap desc:"更新说明"
+```
 
-## ArkTS 兼容要点
+分发包单独输出到 `build/ohos/distribution/entry-default-signed.hap`。签名脚本会将华为签发的证书链导入发布 P12，并检查 Profile 的签名、`release` 与 `internaltesting` 类型、设备 UDID 列表、有效期、包名、私钥与证书是否匹配。可在本地 `signing.local.json` 的 `expectedDeviceIds` 数组中记录目标设备 UDID，检查时会确认这些设备均已授权。需要本机 Python 的 `cryptography` 库；缺失时按命令提示安装。
 
-- Kit 名是 `@kit.BackgroundTasksKit`（复数，没有 BackgroundTaskKit）
-- 长时任务模式枚举是 `backgroundTaskManager.BackgroundMode.LOCATION`（无 TaskType）
-- ArkTS 严格模式：私有方法要显式 `: void` 返回类型；`.then()` 回调加返回类型注解
-- Flutter 侧 `PopScope` 用 `onPopInvoked`（3.22 fork 无 onPopInvokedWithResult；主线已弃用但保留）
+`pgyer_hap` 上传前会执行发布签名检查，上传 HAP 后同步同一 P12 供蒲公英生成安装清单。任一步失败都不应宣布网页安装已修复。`check` 能校验签名和已配置的设备授权，实际安装结果仍需真机确认。
 
-## 已知边界
+只读检查原有 HAP：
 
-- DevEco Studio 打开工程时会按 modelVersion 5.0.0 往 `ohos/package.json` 同步写入
-  `@ohos/hvigor: 5.2.2` 依赖——`hvigorw.bat` 已在构建前自动清理，无需手动处理。
-- `.pub-cache-ohos` 中的 geolocator 补丁在缓存重建后会丢失（见「工具链适配」第 4 条）。
+```powershell
+python tool/ohos_distribution.py inspect --hap build/ohos/hap/entry-default-signed.hap
+```
+
+`signing.local.json` 含口令，P12 含私钥，均不得提交到 Git。申请证书时只上传 CSR 到华为；完成发布签名后，Fastlane 才把匹配的 P12 发送到蒲公英官方证书接口。
+
+### 扫码安装验收与旧版冲突
+
+USB 安装成功只能证明安装包能被设备安装，不能代替蒲公英扫码验收。扫码验收应使用蒲公英鸿蒙下载页的二维码，在华为浏览器中点击安装，并通过手机安装结果与日志确认下载、验签和安装均成功。
+
+若出现 `10021`，先读取手机实际 UDID 并与包内 Profile 比对，同时核对 HAP、Profile 和蒲公英安装清单的签名。不要仅凭 AGC 设备名称认定授权正确。
+
+若重试日志显示包校验成功，随后报 `17700073`（已有同包名但签名不同的应用），应检查手机是否还装着调试签名版。调试版与发布版的签名或应用标识不同会阻止覆盖安装；先备份记录和设置，确认后卸载旧版，再通过蒲公英下载安装。后续发布持续复用同一发布身份，避免再次产生签名冲突。
+
+## 固定依赖与兼容处理
+
+`pubspec_ohos.yaml` 中所有直接 Git 依赖都固定到提交；构建脚本生成 overrides，确保 federated 插件内部的分支引用不会覆盖这些选择。`pubspec_ohos.lock` 与主 `pubspec.lock` 均应随源码提交。更新依赖时重新构建并审阅对应锁文件差异。
+
+脚本自动完成以下兼容步骤：
+
+- 在隔离目录 `vendor/geolocator` 的副本中移除不适用于鸿蒙的 Web 导出；共享 pub 缓存保持原样。
+- 将 SDK 的 flutter-hvigor-plugin 复制到隔离目录后处理旧 hvigor 开发依赖；SDK 源文件保持原样。
+- 使用 DevEco 自带的 hvigor，通过隔离工程中的 junction 统一 CLI 与插件的物理实例，避免双实例冲突。
+- 固定 `web: 0.5.1` 以兼容 Dart 3.4，并将工程副本中的 JSON5 等文件统一为 LF 换行。
+- 分享 API 与 PopScope 的 Flutter 3.22 兼容用法保留在明确标注的边界；静态检查无需全局禁用弃用提示。
+
+### 语音播报无法压低其他应用音量
+
+`@ohos.multimedia.audio` 没有应用侧申请音频焦点的 API（焦点由系统按音频流用途在渲染时自动分配），CoreSpeechKit `SpeakParams` 也不暴露音频属性，TTS 引擎内部自行渲染音频。因此播报期间其他应用（如音乐）的音量无法由本应用主动压低，只能依赖系统对 TTS 流的焦点策略。Android 端通过 `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` 实现、iOS 端通过 `AVAudioSession.duckOthers` 实现压低音量；鸿蒙端在系统提供相应 API 前不做处理。
+
+## 测试与设备验收
+
+```powershell
+python -m unittest discover -s tool/tests -v
+python tool/ohos_build.py release --analyze
+```
+
+Python 测试覆盖构建失败不修改主依赖、删除路径边界、签名隔离，以及兼容补丁不修改 SDK/共享缓存。
+
+EntryAbility 已声明 `backgroundModes: ["location"]`；申请 LOCATION 长时任务失败会返回 Dart 错误，并在跑步页显示后台状态提示。真机需验证授权、锁屏续记、长时任务提示、前后台切换、GPS 关闭/恢复、暂停分段、进程终止及草稿恢复。编译成功不表示这些系统行为已经通过设备验收。
+
+### 跑步后里程和配速不更新
+
+固定提交 `d234260` 的 `geolocator_ohos` 在未收到 `timeInterval` 时，将 `ContinuousLocationRequest.interval` 设为 `10000`；这个字段的单位是**秒**，不是毫秒，见[OpenHarmony 位置服务接口](https://github.com/openharmony/docs/blob/master/zh-cn/application-dev/reference/apis-location-kit/js-apis-geoLocationManager.md#continuouslocationrequest12)。通用 `LocationSettings` 不包含该字段，会导致持续定位间隔约为 2 小时 47 分钟。
+
+`tracking_location_settings.dart` 为鸿蒙明确传入 `timeInterval: 1000` 毫秒，由插件换算为 1 秒，并设置 30 秒无位置回调超时。超时后跑步页显示定位异常，5 秒后重连；断开前后的坐标不会直接累计为里程。Android/iOS 的定位设置保持原有行为。
+
+在“我的 → 诊断日志”检查 `GPS subscribe`（应包含 `timeInterval: 1000`）、`GPS first fix` 和 `GPS stream` 错误记录。首个有效位置到达后，户外以正常跑步速度移动 50–100 米，确认轨迹、公里数和配速持续变化；再验证暂停恢复、锁屏及前后台切换。精度超过 25 米的点仍被过滤，不应以室内测试结果代替户外验收。

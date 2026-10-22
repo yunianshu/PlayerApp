@@ -32,10 +32,7 @@ void main() {
   });
 
   test('单点重复（零距离）不产生分段', () {
-    final pts = <RunPoint>[
-      _pt(39.0, 116.0, 0),
-      _pt(39.0, 116.0, 600),
-    ];
+    final pts = <RunPoint>[_pt(39.0, 116.0, 0), _pt(39.0, 116.0, 600)];
     expect(splitsOf(pts), isEmpty);
   });
 }

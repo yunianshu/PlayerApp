@@ -3,3 +3,20 @@
 .codeartsdoer/
 # 鸿蒙 pub 缓存（与项目同盘的专用缓存目录，见 docs/harmonyos.md）
 .pub-cache-ohos/
+
+# REA 逆向分析产物（Keep APK/反编译缓存，本地保留不入库）
+.rea-analysis/
+
+# 动作示意图：临时参考图不入库（发布前须为自生成图；.gitkeep 占位除外）
+app/assets/exercises/*.png
+!app/assets/exercises/.gitkeep
+
+# Remotion 启动动画工具（源码保留，依赖与产物不入库）
+app/tool/splash-remotion/node_modules/
+app/tool/splash-remotion/out/
+app/tool/splash-remotion/frame*.png
+
+# 本地会话工作产物（AI 工具/生成脚本/测试素材），不入库
+.gen/
+.claude/
+build/

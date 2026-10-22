@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 夜间模式启动屏：深色背景，避免夜间用户启动时白屏闪烁 -->
+<!-- 纯白启动底：无 logo。原生窗口只作为 splash.mp4 白色首帧的延伸，
+     用户感知上只有一个启动页（视频），播完进主页。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/launch_background_night" />
+    <item android:drawable="@android:color/white" />
 </layer-list>

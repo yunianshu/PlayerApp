@@ -29,7 +29,10 @@ void main() {
 
   group('formatDuration', () {
     test('时分秒', () {
-      expect(formatDuration(const Duration(hours: 1, minutes: 42, seconds: 3)), '1:42:03');
+      expect(
+        formatDuration(const Duration(hours: 1, minutes: 42, seconds: 3)),
+        '1:42:03',
+      );
       expect(formatDuration(const Duration(minutes: 28, seconds: 3)), '28:03');
     });
   });

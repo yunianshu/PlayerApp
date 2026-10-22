@@ -12,12 +12,13 @@ class RoutePainter extends CustomPainter {
   final List<RunPoint> points;
   final double strokeWidth;
   final AppPalette palette;
+  final int _pointCount;
 
   RoutePainter(
     this.points, {
     this.strokeWidth = 4,
     this.palette = AppPalette.light,
-  });
+  }) : _pointCount = points.length;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -48,17 +49,27 @@ class RoutePainter extends CustomPainter {
     final spanLat = (maxLat - minLat).abs().clamp(1e-5, double.infinity);
     final spanLng = (maxLng - minLng).abs().clamp(1e-5, double.infinity);
     // 经度方向按 cos(平均纬度) 收缩，否则轨迹横向被拉长变形。
-    final cosLat = math.max(0.2, math.cos((minLat + maxLat) / 2 * math.pi / 180));
+    final cosLat = math.max(
+      0.2,
+      math.cos((minLat + maxLat) / 2 * math.pi / 180),
+    );
     final scale = math.min(w / (spanLng * cosLat), h / spanLat);
     Offset project(RunPoint p) => Offset(
-      pad + (p.lng - minLng) * cosLat * scale + (w - spanLng * cosLat * scale) / 2,
+      pad +
+          (p.lng - minLng) * cosLat * scale +
+          (w - spanLng * cosLat * scale) / 2,
       h - ((p.lat - minLat) * scale + (h - spanLat * scale) / 2) + pad,
     );
 
     final path = ui.Path()
       ..moveTo(project(points.first).dx, project(points.first).dy);
     for (final p in points.skip(1)) {
-      path.lineTo(project(p).dx, project(p).dy);
+      final offset = project(p);
+      if (p.startsSegment) {
+        path.moveTo(offset.dx, offset.dy);
+      } else {
+        path.lineTo(offset.dx, offset.dy);
+      }
     }
 
     // 底层描边（深色宽边）+ 主轨迹
@@ -108,7 +119,8 @@ class RoutePainter extends CustomPainter {
     // points 是原地增长的可变 List：引用相同但长度变化时（跑步中）需要重绘；
     // 引用不同（详情/总结页换新列表）必然重绘。
     if (!identical(oldDelegate.points, points)) return true;
-    if (oldDelegate.points.length != points.length) return true;
-    return !identical(oldDelegate.palette, palette);
+    if (oldDelegate._pointCount != _pointCount) return true;
+    return oldDelegate.strokeWidth != strokeWidth ||
+        !identical(oldDelegate.palette, palette);
   }
 }

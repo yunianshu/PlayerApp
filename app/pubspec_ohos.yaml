@@ -1,7 +1,7 @@
 name: runtrail
 description: "跑迹 RunTrail - 跑步里程记录（本地应用）"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.2.4+17
 
 # 鸿蒙专用 pubspec：与 ohos-flutter 3.22 (Dart 3.4) 兼容。
 # 原生插件全部换成 OpenHarmony-SIG 社区适配版（git 引用）。
@@ -11,6 +11,18 @@ environment:
   sdk: '>=3.4.0 <4.0.0'
 
 dependencies:
+  # 视频播放（鸿蒙适配版，基于 AVPlayer）：dart 层用同仓 ohos 分支，
+  # 并显式引入 ohos 原生实现（缺它运行时 MissingPluginException）。
+  video_player:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
+      ref: 2f21e26e09efb92b8429c840ae7ca0cb024f036c
+      path: packages/video_player/video_player
+  video_player_ohos:
+    git:
+      url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
+      ref: 2f21e26e09efb92b8429c840ae7ca0cb024f036c
+      path: packages/video_player/video_player_ohos
   flutter:
     sdk: flutter
 
@@ -24,36 +36,38 @@ dependencies:
   geolocator:
     git:
       url: "https://gitcode.com/openharmony-sig/fluttertpc_geolocator.git"
-      ref: br_geolocator_v13.0.0_ohos
+      ref: d234260ec7d098847c9f611aea11e3ee64a49509
       path: geolocator
   flutter_geolocator_ohos:
     git:
       url: "https://gitcode.com/openharmony-sig/fluttertpc_geolocator.git"
-      ref: br_geolocator_v13.0.0_ohos
+      ref: d234260ec7d098847c9f611aea11e3ee64a49509
       path: geolocator_ohos
 
   # 本地 SQLite（鸿蒙适配版）
   sqflite:
     git:
       url: "https://gitcode.com/openharmony-sig/flutter_sqflite.git"
+      ref: b7b4b386dd31e52f8f1b7c5e17c7414a214287c4
       path: sqflite
 
   # 路径 / 偏好存储（鸿蒙适配版）
   path_provider:
     git:
       url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
-      ref: master
+      ref: 2f21e26e09efb92b8429c840ae7ca0cb024f036c
       path: packages/path_provider/path_provider
   shared_preferences:
     git:
       url: "https://gitcode.com/openharmony-sig/flutter_packages.git"
-      ref: master
+      ref: 2f21e26e09efb92b8429c840ae7ca0cb024f036c
       path: packages/shared_preferences/shared_preferences
 
   # 分享（鸿蒙适配版）
   share_plus:
     git:
       url: "https://gitcode.com/openharmony-sig/flutter_plus_plugins.git"
+      ref: 9571de239933ab2893dbd49037e128135b050a7c
       path: packages/share_plus/share_plus
 
   # 防息屏（鸿蒙适配版）：3.22 对应 br_wakelock_plus_1.2.8_ohos 分支，
@@ -61,23 +75,26 @@ dependencies:
   wakelock_plus:
     git:
       url: "https://gitcode.com/openharmony-sig/fluttertpc_wakelock_plus.git"
-      ref: br_wakelock_plus_1.2.8_ohos
+      ref: e90d48ba31bd17a43c1406004794914a8090d1b8
       path: wakelock_plus
   wakelock_plus_ohos:
     git:
       url: "https://gitcode.com/openharmony-sig/fluttertpc_wakelock_plus.git"
-      ref: br_wakelock_plus_1.2.8_ohos
+      ref: e90d48ba31bd17a43c1406004794914a8090d1b8
       path: wakelock_plus/ohos
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  path_provider_platform_interface: ^2.1.2
+  wakelock_plus_platform_interface: ^1.3.0
   # 测试用：widget_test/database_test 依赖 ffi 数据库工厂。
   # 用同一 fork 的 ohos 适配版（hosted 版 2.3.3+ 要求 Dart >=3.5，与本工具链冲突）。
   sqflite_common_ffi:
     git:
       url: "https://gitcode.com/openharmony-sig/flutter_sqflite.git"
+      ref: b7b4b386dd31e52f8f1b7c5e17c7414a214287c4
       path: sqflite_common_ffi
 
 # ohos-flutter 3.22 (Dart 3.4) 无法编译 web 1.x 的扩展类型语法，
@@ -87,6 +104,13 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
+
+  # 与主 pubspec 保持一致：示意图 + 真人演示视频 + 启动页视频都要打进 HAP，
+  # 漏掉 videos/ 会让课程页在鸿蒙永远回退到静态图（曾踩坑）。
+  assets:
+    - assets/exercises/
+    - assets/videos/
+    - assets/splash.mp4
 
   # 字体与主 pubspec 保持一致（离线打包，编辑风/夜间主题大数字依赖这些字体）。
   fonts:

@@ -1,0 +1,16 @@
+{
+  "name": "runtrail-splash",
+  "private": true,
+  "scripts": {
+    "render": "remotion render src/index.ts Splash out/splash.mp4 --codec=h264"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.290",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.290"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0"
+  }
+}

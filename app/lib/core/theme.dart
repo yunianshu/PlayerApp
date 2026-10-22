@@ -3,6 +3,14 @@ import 'package:provider/provider.dart';
 
 import 'theme_controller.dart';
 
+/// 全局圆角规范：卡片/按钮 12，弹层 16，小元素 8。
+/// 新代码一律引用这里的常量，不要再手写别的数值。
+abstract final class AppRadius {
+  static const double sm = 8; // 小元素：chip、输入块、小色块
+  static const double md = 12; // 卡片、按钮、列表块
+  static const double lg = 16; // 底部弹层顶部圆角
+}
+
 /// 三套主题调色板：与 design/runtrail.pen 中的主题变量一一对应。
 /// light = 白天「清透玻璃风」，dark = 夜间「高燃运动风」，
 /// editorial = 「主题一 编辑风」（奶油纸面 + 墨色 + 荧光绿）。
@@ -83,9 +91,9 @@ class AppPalette {
     accent2: Color(0xFF3DD8D0),
     accentDeep: Color(0xFF8B89E8),
     textPrimary: Color(0xFF1C1C2E),
-    textSecondary: Color(0xFF7A7F94),
-    textMuted: Color(0xFFA0A5B8),
-    danger: Color(0xFFE8503F),
+    textSecondary: Color(0xFF5E6377),
+    textMuted: Color(0xFF71768A),
+    danger: Color(0xFFC43A2B),
     dangerSoft: Color(0xFFFBEAE8),
     dangerStroke: Color(0xFFF3C6C0),
     stroke: Color(0xFFE7EAF3),
@@ -128,7 +136,7 @@ class AppPalette {
     accentDeep: Color(0xFFFF8F6E),
     textPrimary: Color(0xFFF5F2EE),
     textSecondary: Color(0xFFA09AA8),
-    textMuted: Color(0xFF76707A),
+    textMuted: Color(0xFF8E8894),
     danger: Color(0xFFFF5A5A),
     dangerSoft: Color(0xFF331616),
     dangerStroke: Color(0x55FF5A5A),
@@ -171,9 +179,9 @@ class AppPalette {
     accent2: Color(0xFFB8E62E),
     accentDeep: Color(0xFF8A8878),
     textPrimary: Color(0xFF14150F),
-    textSecondary: Color(0xFF8A8878),
-    textMuted: Color(0xFFA8A28E),
-    danger: Color(0xFFE8503F),
+    textSecondary: Color(0xFF5F5D55),
+    textMuted: Color(0xFF6E6A5B),
+    danger: Color(0xFFB53425),
     dangerSoft: Color(0xFFFBEAE8),
     dangerStroke: Color(0xFFF3C6C0),
     stroke: Color(0xFFD8D4C4),
@@ -208,9 +216,10 @@ class AppPalette {
 
 /// 快捷取色：context.colors（跟随 ThemeController，支持三套主题）。
 extension PaletteX on BuildContext {
-  AppPalette get colors => select<ThemeController, AppPalette>(
-    (tc) => tc.effectivePalette,
-  );
+  /// Non-listening access for tap handlers and asynchronous callbacks.
+  AppPalette get readColors => read<ThemeController>().effectivePalette;
+  AppPalette get colors =>
+      select<ThemeController, AppPalette>((tc) => tc.effectivePalette);
 
   /// 当前是否为编辑风。
   bool get isEditorial => read<ThemeController>().isEditorial;
@@ -227,9 +236,7 @@ LinearGradient heroGradient(AppPalette p) => LinearGradient(
   end: Alignment.bottomRight,
   // 白天主题为三色渐变（靛蓝 → 中间蓝紫 → 天蓝），夜间/编辑风退化为双色。
   colors: [p.heroA, p.heroB, p.heroC],
-  stops: p.isEditorial || p.isDark
-      ? const [0, 1, 1]
-      : const [0, 0.52, 1],
+  stops: p.isEditorial || p.isDark ? const [0, 1, 1] : const [0, 0.52, 1],
 );
 
 /// 页面背景：白天为纵向微渐变，夜间/编辑风为纯色（返回 null 不包渐变）。
@@ -245,8 +252,9 @@ RadialGradient mapGradient(AppPalette p) =>
     RadialGradient(colors: [p.mapA, p.mapB]);
 
 ThemeData buildTheme(AppThemeStyle style) {
-  final brightness =
-      style == AppThemeStyle.dark ? Brightness.dark : Brightness.light;
+  final brightness = style == AppThemeStyle.dark
+      ? Brightness.dark
+      : Brightness.light;
   final p = switch (style) {
     AppThemeStyle.dark => AppPalette.dark,
     AppThemeStyle.editorial => AppPalette.editorial,
@@ -258,7 +266,8 @@ ThemeData buildTheme(AppThemeStyle style) {
   return base.copyWith(
     scaffoldBackgroundColor: p.bg,
     colorScheme: base.colorScheme.copyWith(
-      primary: p.accent,
+      // 编辑风荧光绿在米色底上对比不足，primary 改用墨色（绿仅用于深底/点缀）。
+      primary: p.isEditorial ? p.textPrimary : p.accent,
       secondary: p.accent,
       surface: p.surface,
       error: p.danger,
