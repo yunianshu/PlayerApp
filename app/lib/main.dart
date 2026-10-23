@@ -10,6 +10,7 @@ import 'core/i18n.dart';
 import 'core/prefs.dart';
 import 'core/theme.dart';
 import 'core/theme_controller.dart';
+import 'core/launcher_icon_controller.dart';
 import 'pages/countdown_page.dart';
 import 'pages/course_page.dart';
 import 'pages/courses_page.dart';
@@ -73,6 +74,10 @@ class RunTrailApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => RunTracker()),
         ChangeNotifierProvider.value(value: themeController),
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (_) => LauncherIconController(themeController)..load(),
+        ),
         ChangeNotifierProvider.value(value: LocaleController.instance),
       ],
       child: Builder(

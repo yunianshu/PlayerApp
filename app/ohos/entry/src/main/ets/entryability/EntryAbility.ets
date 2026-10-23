@@ -9,6 +9,7 @@ import { textToSpeech } from '@kit.CoreSpeechKit';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 import AiCredentialsStore from '../security/AiCredentialsStore';
 import TrainingReminders from '../reminders/TrainingReminders';
+import LauncherIconSupport from '../appearance/LauncherIconSupport';
 
 export default class EntryAbility extends FlutterAbility {
   private backgroundChannel?: MethodChannel;
@@ -22,6 +23,7 @@ export default class EntryAbility extends FlutterAbility {
     super.configureFlutterEngine(flutterEngine)
     GeneratedPluginRegistrant.registerWith(flutterEngine)
     AiCredentialsStore.register(flutterEngine)
+    LauncherIconSupport.register(flutterEngine)
     // 跑步保活通道：申请/取消 LOCATION 长时任务（锁屏续记）。
     this.backgroundChannel = new MethodChannel(
       flutterEngine.dartExecutor.getBinaryMessenger(), 'runtrail/background')
