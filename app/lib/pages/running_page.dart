@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -91,17 +92,13 @@ class _RunningPageState extends State<RunningPage> {
     try {
       final granted = await BackgroundService.hasNotificationPermission();
       if (granted || !mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 8),
-          content: Text('未授予通知权限，锁屏将看不到实时成绩'.tr),
-          action: SnackBarAction(
-            label: '去开启'.tr,
-            onPressed: () => unawaited(
-              BackgroundService.openNotificationSettings(),
-            ),
-          ),
+      showAppToast(
+        context,
+        '未授予通知权限，锁屏将看不到实时成绩'.tr,
+        duration: const Duration(seconds: 8),
+        actionLabel: '去开启'.tr,
+        onAction: () => unawaited(
+          BackgroundService.openNotificationSettings(),
         ),
       );
     } on Object {
@@ -663,9 +660,7 @@ class _RunningPageState extends State<RunningPage> {
           // 长按结束并自动保存（与应用内"长按解锁"同一手势习惯）；
           // 轻点只提示，防误触。
           onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('长按按钮结束并保存'.tr)),
-            );
+            showAppToast(context, '长按按钮结束并保存'.tr);
           },
           onLongPress: () => _endRun(t),
         ),
@@ -791,9 +786,7 @@ class _RunningPageState extends State<RunningPage> {
         saved = true;
       } on Object {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('自动保存失败，请在下一页手动保存'.tr)),
-          );
+          showAppToast(context, '自动保存失败，请在下一页手动保存'.tr);
         }
       }
       if (!mounted) return;
@@ -808,8 +801,7 @@ class _RunningPageState extends State<RunningPage> {
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('结束记录失败，请重试'.tr)));
+        showAppToast(context, '结束记录失败，请重试'.tr);
       }
     } finally {
       _ending = false;

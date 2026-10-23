@@ -51,6 +51,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        AiCredentialsStore.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
         // 跑步保活通道：启动/停止前台服务（见 TrackingForegroundService）。
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "runtrail/background")
             .setMethodCallHandler { call, result ->

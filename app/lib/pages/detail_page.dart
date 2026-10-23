@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../widgets/app_toast.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../services/gpx.dart';
@@ -99,8 +100,7 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> _exportGpx() async {
     if (_record.isManual || _points.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('手动记录没有轨迹，无法导出 GPX'.tr)));
+      showAppToast(context, '手动记录没有轨迹，无法导出 GPX'.tr);
       return;
     }
     try {
@@ -112,12 +112,10 @@ class _DetailPageState extends State<DetailPage> {
       await file.writeAsString(gpx, flush: true);
       await ShareService.file(file.path, subject: 'RunTrail GPX');
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('GPX 已生成，选择保存位置'.tr)));
+      showAppToast(context, 'GPX 已生成，选择保存位置'.tr);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('导出失败，请重试'.tr)));
+      showAppToast(context, '导出失败，请重试'.tr);
     }
   }
 
@@ -181,8 +179,7 @@ class _DetailPageState extends State<DetailPage> {
       await _load();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+      showAppToast(context, '保存失败，请重试'.tr);
     }
   }
 
@@ -217,8 +214,7 @@ class _DetailPageState extends State<DetailPage> {
       await RunDatabase.instance.deleteRun(_record.id!);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('删除失败，请重试'.tr)));
+      showAppToast(context, '删除失败，请重试'.tr);
       return;
     }
     AppData.instance.bump();

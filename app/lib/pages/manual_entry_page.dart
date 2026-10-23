@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_toast.dart';
 
 import '../core/calendar.dart';
 import '../core/i18n.dart';
@@ -80,8 +81,7 @@ class _ManualEntryPageState extends State<ManualEntryPage> {
       );
       await RunStorage.save(record, const []);
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('补录成功'.tr)));
+      showAppToast(context, '补录成功'.tr);
       Navigator.of(context).pop();
     } catch (_) {
       if (!mounted) return;

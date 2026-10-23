@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'app_toast.dart';
 import 'package:flutter/services.dart';
 
 import '../core/i18n.dart';
@@ -95,9 +96,7 @@ Future<void> showVoiceSettingsDialog(BuildContext context) async {
                     flush: true,
                   );
                   if (!spoken && ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text(TtsService.failureMessage)),
-                    );
+                    showAppToast(ctx, TtsService.failureMessage);
                   }
                 },
               ),
@@ -345,13 +344,11 @@ Future<void> showDiagnosticsDialog(BuildContext context) async {
               try {
                 await Clipboard.setData(ClipboardData(text: log));
                 if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx)
-                      .showSnackBar(SnackBar(content: Text('日志已复制'.tr)));
+                  showAppToast(ctx, '日志已复制'.tr);
                 }
               } on Object {
                 if (ctx.mounted) {
-                  ScaffoldMessenger.of(ctx)
-                      .showSnackBar(SnackBar(content: Text('复制失败'.tr)));
+                  showAppToast(ctx, '复制失败'.tr);
                 }
               }
             },

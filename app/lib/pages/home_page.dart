@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../widgets/app_toast.dart';
 import 'package:provider/provider.dart';
 
 import '../core/i18n.dart';
@@ -130,8 +131,7 @@ class HomePageState extends State<HomePage> {
       await RunStorage.save(draft.record, draft.points);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+      showAppToast(context, '保存失败，请重试'.tr);
     } finally {
       if (mounted) setState(() => _draftBusy = false);
     }
@@ -163,8 +163,7 @@ class HomePageState extends State<HomePage> {
       await RunStorage.discard(draft.sessionKey);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('放弃失败，请重试'.tr)));
+        showAppToast(context, '放弃失败，请重试'.tr);
       }
     } finally {
       if (mounted) setState(() => _draftBusy = false);
