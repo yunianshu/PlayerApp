@@ -191,10 +191,122 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('today session precedes full-month calendar on entry', (
+  testWidgets(
+    'portrait swipes dates, handles gaps, picker and rotation stay synced',
+    (tester) async {
+      await pumpDashboard(tester);
+      expect(
+        find.byKey(const ValueKey('training-month-calendar')),
+        findsNothing,
+      );
+      final pages = find.byKey(const ValueKey('training-day-pages'));
+      await tester.drag(pages, const Offset(330, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('2026-10-26 周一'), findsOneWidget);
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(pages, const Offset(-330, 0));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('2026-10-29 周四'), findsOneWidget);
+      expect(find.text('2026-10-29 无训练安排'), findsOneWidget);
+      tester.view.physicalSize = const Size(844, 390);
+      await tester.pumpAndSettle();
+      await reveal(tester, find.text('2026-10-29 无训练安排'));
+      expect(find.text('2026-10-29 无训练安排'), findsOneWidget);
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pumpAndSettle();
+      await returnToTop(tester);
+      await tester.tap(find.byKey(const ValueKey('training-date-picker')));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<DatePickerDialog>(
+        find.byType(DatePickerDialog),
+      );
+      expect(picker.firstDate, DateTime(2026, 10, 26));
+      expect(picker.lastDate, DateTime(2027, 1, 10));
+      await tester.tap(find.text('27').last);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('2026-10-27 周二'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('training-session-2026-10-27')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('training-return-today')));
+      await tester.pumpAndSettle();
+      expect(find.text('2026-10-26 周一'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('daily pages include leap day and stop at both plan boundaries', (
     tester,
   ) async {
-    await pumpDashboard(tester, height: 1600);
+    await pumpDashboard(
+      tester,
+      child: DashboardHarness(
+        now: DateTime(2024, 2, 28),
+        tasks: const [
+          TrainingTask('2024-02-28', 'EASY', '轻松跑', 5, ''),
+          TrainingTask('2024-03-01', 'REST', '休息', 0, ''),
+        ],
+      ),
+    );
+    final pages = find.byKey(const ValueKey('training-day-pages'));
+    await tester.drag(pages, const Offset(-330, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('2024-02-29 周四'), findsOneWidget);
+    expect(find.text('2024-02-29 无训练安排'), findsOneWidget);
+    await tester.drag(pages, const Offset(-330, 0));
+    await tester.pumpAndSettle();
+    await tester.drag(pages, const Offset(-330, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('2024-03-01 周五'), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.chevron_right_rounded),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byKey(const ValueKey('training-date-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('2024-03-01 周五'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'small landscape at double text keeps seven columns without overflow',
+    (tester) async {
+      await pumpDashboard(
+        tester,
+        width: 640,
+        height: 360,
+        scale: 2,
+        reduceMotion: true,
+      );
+      await reveal(
+        tester,
+        find.byKey(const ValueKey('training-month-calendar')),
+      );
+      final board = tester.widget<SingleChildScrollView>(
+        find.byKey(const ValueKey('training-calendar-board')),
+      );
+      expect(board.controller!.position.maxScrollExtent, 0);
+      for (var i = 0; i < 8; i++) {
+        await tester.drag(dashboardScroll, const Offset(0, -350));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
+  testWidgets('landscape countdown precedes calendar and selected detail', (
+    tester,
+  ) async {
+    await pumpDashboard(tester, width: 1800, height: 1600);
     final session = find.byKey(const ValueKey('training-primary-session'));
     final navigation = find.byKey(
       const ValueKey('training-schedule-navigation'),
@@ -204,17 +316,23 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester.getBottomLeft(session).dy,
-      lessThan(tester.getTopLeft(navigation).dy),
+      tester.getTopLeft(session).dy,
+      greaterThan(tester.getBottomLeft(navigation).dy),
     );
-    expect(tester.getTopLeft(session).dy, lessThan(400));
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('training-countdown-header')))
+          .dy,
+      lessThan(100),
+    );
+    expect(find.text('76 天后出发'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
     'today alone expands by default; collapse survives save and navigation',
     (tester) async {
-      await pumpDashboard(tester);
+      await pumpDashboard(tester, width: 1000, height: 700);
       final row = find.byKey(const ValueKey('training-week-row-2026-10-26'));
       final details = find.byKey(
         const ValueKey('training-week-details-2026-10-26'),
@@ -282,6 +400,7 @@ void main() {
     await pumpDashboard(
       tester,
       child: DashboardHarness(tasks: tasks, now: DateTime(2026, 10, 19)),
+      width: 1000,
       height: 600,
     );
     await reveal(tester, find.byKey(const ValueKey('training-calendar-month')));
@@ -292,7 +411,7 @@ void main() {
   testWidgets(
     'return today resets a browsed month without changing selected date',
     (tester) async {
-      await pumpDashboard(tester);
+      await pumpDashboard(tester, width: 1000, height: 700);
       await reveal(tester, find.byKey(const ValueKey('training-month-next')));
       await tester.tap(find.byKey(const ValueKey('training-month-next')));
       await tester.pumpAndSettle();
@@ -367,13 +486,10 @@ void main() {
       expect(notes.data, longNotes);
       expect(notes.maxLines, isNull);
       expect(notes.overflow, isNull);
-      await reveal(
-        tester,
-        find.byKey(const ValueKey('training-day-2026-10-27')),
+      await tester.drag(
+        find.byKey(const ValueKey('training-day-pages')),
+        const Offset(-330, 0),
       );
-      await tester.tap(find.byKey(const ValueKey('training-day-2026-10-27')));
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byType(AnimatedSwitcher), findsWidgets);
       await tester.pumpAndSettle();
       await returnToTop(tester);
       expect(
@@ -429,21 +545,28 @@ void main() {
   testWidgets('month navigation and today reset select a real task', (
     tester,
   ) async {
-    await pumpDashboard(tester);
+    await pumpDashboard(tester, width: 1000, height: 700);
     await reveal(tester, find.byKey(const ValueKey('training-month-next')));
     await tester.tap(find.byKey(const ValueKey('training-month-next')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('training-day-2026-11-02')));
     await tester.pumpAndSettle();
-    await returnToTop(tester);
+    await reveal(
+      tester,
+      find.byKey(const ValueKey('training-primary-session')),
+    );
     expect(
       find.byKey(const ValueKey('training-session-2026-11-02')),
       findsOneWidget,
     );
+    await returnToTop(tester);
     await reveal(tester, find.byKey(const ValueKey('training-return-today')));
     await tester.tap(find.byKey(const ValueKey('training-return-today')));
     await tester.pumpAndSettle();
-    await returnToTop(tester);
+    await reveal(
+      tester,
+      find.byKey(const ValueKey('training-primary-session')),
+    );
     expect(
       find.byKey(const ValueKey('training-session-2026-10-26')),
       findsOneWidget,
@@ -561,25 +684,37 @@ void main() {
       expect(tester.takeException(), isNull);
       await screenshot(tester, 'training-${mode.name}-details');
       await returnToTop(tester);
-      await reveal(
-        tester,
-        find.byKey(const ValueKey('training-month-calendar')),
+      await tester.drag(
+        find.byKey(const ValueKey('training-day-pages')),
+        const Offset(-330, 0),
       );
-      await screenshot(tester, 'training-${mode.name}-month');
-      final toggle = find.byKey(
-        const ValueKey('training-week-complete-2026-10-23'),
-      );
-      await reveal(tester, toggle);
-      await screenshot(tester, 'training-${mode.name}-today-expanded');
-      await tester.tap(toggle);
       await tester.pumpAndSettle();
-      await screenshot(tester, 'training-${mode.name}-checked-details');
-      await returnToTop(tester);
+      await screenshot(tester, 'training-${mode.name}-portrait-swiped');
+      // Rotation changes the presentation without recreating dashboard state.
+      tester.view.physicalSize = const Size(844, 390);
+      await tester.pumpAndSettle();
       await reveal(
         tester,
         find.byKey(const ValueKey('training-month-calendar')),
       );
-      await screenshot(tester, 'training-${mode.name}-month-checked');
+      await screenshot(tester, 'training-${mode.name}-landscape');
+      await tester.tap(find.byKey(const ValueKey('training-month-next')));
+      await tester.pumpAndSettle();
+      await returnToTop(tester);
+      await screenshot(tester, 'training-${mode.name}-landscape-november');
+      tester.view.physicalSize = const Size(1600, 1000);
+      await tester.pumpAndSettle();
+      await reveal(
+        tester,
+        find.byKey(const ValueKey('training-month-calendar')),
+      );
+      await screenshot(tester, 'training-${mode.name}-wide-calendar');
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pumpAndSettle();
+      await returnToTop(tester);
+      expect(find.text('2026-10-24 周六'), findsOneWidget);
+      await screenshot(tester, 'training-${mode.name}-portrait-return');
+
       expect(tester.takeException(), isNull);
     });
   }

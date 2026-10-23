@@ -4,6 +4,7 @@ import '../core/theme.dart';
 import '../services/marathon_training_service.dart';
 import 'training_completion_toggle.dart';
 import 'training_month_calendar.dart';
+import 'training_day_pager.dart';
 
 /// A session-first training view. All workout content remains available, including
 /// on narrow screens and with large text; motion is only a response to input.
@@ -139,7 +140,14 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
       );
     }
     final selected = _selected(tasks);
-    final monday = _monday(_day(selected.date));
+    final selectedDate =
+        _selectedDate != null &&
+            _selectedDate!.compareTo(tasks.first.date) >= 0 &&
+            _selectedDate!.compareTo(tasks.last.date) <= 0
+        ? _selectedDate!
+        : selected.date;
+    final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
+    final monday = _monday(_day(selectedDate));
     final weekTasks = tasks
         .where((task) => _monday(_day(task.date)) == monday)
         .toList();
@@ -156,57 +164,130 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
         _planHeader(p, tasks, completed),
-        const SizedBox(height: 22),
-        AnimatedSize(
-          key: const ValueKey('training-primary-session'),
-          duration: _motion,
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: AnimatedSwitcher(
-            duration: _motion,
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            child: _sessionCard(p, selected),
-          ),
-        ),
-        const SizedBox(height: 24),
-        Row(
-          key: const ValueKey('training-schedule-navigation'),
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Text(
-                '训练日程',
-                style: appTextStyle(
-                  p,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
+        SizedBox(height: portrait ? 22 : 6),
+        if (portrait) ...[
+          Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  key: const ValueKey('training-date-picker'),
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  label: Text('$selectedDate ${_weekday(_day(selectedDate))}'),
+                  onPressed: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _day(selectedDate),
+                      firstDate: _day(tasks.first.date),
+                      lastDate: _day(tasks.last.date),
+                    );
+                    if (date != null && mounted) {
+                      setState(() => _selectedDate = _dateKey(date));
+                    }
+                  },
                 ),
               ),
-            ),
-            if (todayTask != null)
-              TextButton.icon(
-                key: const ValueKey('training-return-today'),
-                onPressed: () {
-                  setState(() {
-                    _selectedDate = todayTask.date;
-                    _calendarReset++;
-                  });
-                },
-                icon: const Icon(Icons.today_outlined, size: 16),
-                label: const Text('回到今天'),
+              if (todayTask != null)
+                TextButton(
+                  key: const ValueKey('training-return-today'),
+                  onPressed: () => _select(todayTask),
+                  child: const Text('今天'),
+                ),
+            ],
+          ),
+          Text(
+            '左右滑动切换日期 · 点击日期选择',
+            textAlign: TextAlign.center,
+            style: appTextStyle(p, fontSize: 12, color: p.textSecondary),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                tooltip: '前一天',
+                onPressed: selectedDate == tasks.first.date
+                    ? null
+                    : () => setState(
+                        () => _selectedDate = _dateKey(
+                          _day(selectedDate).subtract(const Duration(days: 1)),
+                        ),
+                      ),
+                icon: const Icon(Icons.chevron_left_rounded),
               ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        TrainingMonthCalendar(
-          resetRevision: _calendarReset,
-          tasks: tasks,
-          completed: widget.completed,
-          selectedDate: selected.date,
-          today: _today,
-          onSelect: _select,
-        ),
+              IconButton(
+                tooltip: '后一天',
+                onPressed: selectedDate == tasks.last.date
+                    ? null
+                    : () => setState(
+                        () => _selectedDate = _dateKey(
+                          _day(selectedDate).add(const Duration(days: 1)),
+                        ),
+                      ),
+                icon: const Icon(Icons.chevron_right_rounded),
+              ),
+            ],
+          ),
+          TrainingDayPager(
+            key: const ValueKey('training-primary-session'),
+            firstDate: _day(tasks.first.date),
+            lastDate: _day(tasks.last.date),
+            selectedDate: _day(selectedDate),
+            onDate: (date) => setState(() => _selectedDate = _dateKey(date)),
+            builder: (date) {
+              final task = tasks
+                  .where((t) => t.date == _dateKey(date))
+                  .firstOrNull;
+              return task != null
+                  ? _sessionCard(p, task)
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 48),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.event_available_outlined,
+                            color: p.textSecondary,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            '${_dateKey(date)} 无训练安排',
+                            style: appTextStyle(p),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '可滑动查看相邻日期',
+                            style: appTextStyle(p, color: p.textSecondary),
+                          ),
+                        ],
+                      ),
+                    );
+            },
+          ),
+        ] else ...[
+          TrainingMonthCalendar(
+            resetRevision: _calendarReset,
+            tasks: tasks,
+            completed: widget.completed,
+            selectedDate: selectedDate,
+            today: _today,
+            onSelect: _select,
+            onToday: todayTask == null
+                ? null
+                : () {
+                    setState(() {
+                      _selectedDate = todayTask.date;
+                      _calendarReset++;
+                    });
+                  },
+          ),
+          const SizedBox(height: 16),
+          AnimatedSize(
+            key: const ValueKey('training-primary-session'),
+            duration: _motion,
+            child: tasks.any((t) => t.date == selectedDate)
+                ? _sessionCard(p, selected)
+                : Text('$selectedDate 无训练安排', style: appTextStyle(p)),
+          ),
+          const SizedBox(height: 24),
+        ],
         const SizedBox(height: 24),
         _coachPanel(p),
         const SizedBox(height: 28),
@@ -235,7 +316,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
         ),
         const SizedBox(height: 14),
         ...weekTasks.map(
-          (task) => _weekRow(p, task, task.date == selected.date),
+          (task) => _weekRow(p, task, task.date == selectedDate),
         ),
         const SizedBox(height: 20),
         _reminderPanel(p),
@@ -273,7 +354,26 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
         ?.difference(DateTime(_now.year, _now.month, _now.day))
         .inDays;
     final progress = completed / tasks.length;
+    if (MediaQuery.orientationOf(context) == Orientation.landscape) {
+      return Row(
+        key: const ValueKey('training-countdown-header'),
+        children: [
+          Expanded(
+            child: Text(
+              race?.title ?? '马拉松训练计划',
+              style: appTextStyle(p, fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (days != null && days >= 0)
+            Text(
+              '$days 天后出发',
+              style: appTextStyle(p, fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+        ],
+      );
+    }
     return Column(
+      key: const ValueKey('training-countdown-header'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(

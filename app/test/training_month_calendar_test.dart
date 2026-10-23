@@ -20,17 +20,133 @@ Future<void> pumpCalendar(
   tester,
   height: 1100,
   child: Scaffold(
-    body: TrainingMonthCalendar(
-      tasks: tasks,
-      completed: completed,
-      selectedDate: selected,
-      today: '2024-01-01',
-      onSelect: onSelect ?? (_) {},
+    body: SingleChildScrollView(
+      child: TrainingMonthCalendar(
+        tasks: tasks,
+        completed: completed,
+        selectedDate: selected,
+        today: '2024-01-01',
+        onSelect: onSelect ?? (_) {},
+      ),
     ),
   ),
 );
 
 void main() {
+  testWidgets(
+    'one horizontal board keeps weeks aligned and preserves manual scroll',
+    (tester) async {
+      final checkins = ValueNotifier<Set<String>>({});
+      addTearDown(checkins.dispose);
+      final plan = List.generate(
+        14,
+        (i) => TrainingTask(
+          '2024-01-${(i + 1).toString().padLeft(2, '0')}',
+          'EASY',
+          '轻松跑',
+          5,
+          '轻松完成训练。',
+          easyPace: 420,
+          slowPace: 450,
+        ),
+      );
+      String? selected;
+      await pumpDashboard(
+        tester,
+        height: 1100,
+        child: Scaffold(
+          body: SingleChildScrollView(
+            child: ValueListenableBuilder<Set<String>>(
+              valueListenable: checkins,
+              builder: (context, completed, _) => TrainingMonthCalendar(
+                tasks: plan,
+                completed: completed,
+                selectedDate: '2024-01-05',
+                today: '2024-01-05',
+                onSelect: (task) => selected = task.date,
+              ),
+            ),
+          ),
+        ),
+      );
+      final board = find.byKey(const ValueKey('training-calendar-board'));
+      final scroll = tester.widget<SingleChildScrollView>(board).controller!;
+      expect(
+        scroll.offset,
+        greaterThan(0),
+        reason: 'Initially expose today column.',
+      );
+      expect(
+        find.byKey(const ValueKey('training-calendar-scroll-hint')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('training-day-2024-01-05')))
+            .dx,
+        tester
+            .getTopLeft(find.byKey(const ValueKey('training-day-2024-01-12')))
+            .dx,
+      );
+      await tester.drag(board, const Offset(220, 0));
+      await tester.pumpAndSettle();
+      final offset = scroll.offset;
+      checkins.value = {'2024-01-01'};
+      await tester.pumpAndSettle();
+      expect(
+        scroll.offset,
+        offset,
+        reason: 'Completion rebuild must not undo a manual swipe.',
+      );
+      final target = find.byKey(const ValueKey('training-day-2024-01-03'));
+      await tester.ensureVisible(target);
+      await tester.tap(target);
+      expect(selected, '2024-01-03');
+      expect(find.text('5 km'), findsWidgets);
+      expect(find.text('7:00–7:30 /km'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'seven readable card columns fit a wide screen without scrolling',
+    (tester) async {
+      await pumpDashboard(
+        tester,
+        width: 1600,
+        height: 1800,
+        child: Scaffold(
+          body: SingleChildScrollView(
+            child: TrainingMonthCalendar(
+              tasks: tasks,
+              completed: const {},
+              selectedDate: '2023-12-31',
+              today: '2024-01-01',
+              onSelect: (_) {},
+            ),
+          ),
+        ),
+      );
+      final board = tester.widget<SingleChildScrollView>(
+        find.byKey(const ValueKey('training-calendar-board')),
+      );
+      expect(board.controller!.position.maxScrollExtent, 0);
+      expect(
+        find.byKey(const ValueKey('training-calendar-scroll-hint')),
+        findsNothing,
+      );
+      final first = tester.getTopLeft(
+        find.byKey(const ValueKey('training-day-2023-12-04')),
+      );
+      final last = tester.getTopRight(
+        find.byKey(const ValueKey('training-day-2023-12-10')),
+      );
+      expect(first.dx, greaterThanOrEqualTo(0));
+      expect(last.dx, lessThanOrEqualTo(1600));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('natural months handle December, January and leap February', (
     tester,
   ) async {
