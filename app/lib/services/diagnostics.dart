@@ -11,7 +11,7 @@ class Diagnostics {
 
   /// 与 pubspec version 同步更新（启动标记/关于页显示用）。
   /// test/version_sync_test.dart 会校验两者一致，改 pubspec 时记得同步这里。
-  static const appVersion = '1.3.1+19';
+  static const appVersion = '1.3.2+20';
 
   static const _fileName = 'diagnostics.log';
   static const _maxBytes = 256 * 1024;

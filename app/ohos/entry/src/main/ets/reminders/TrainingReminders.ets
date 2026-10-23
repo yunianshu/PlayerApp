@@ -99,8 +99,8 @@ export default class TrainingReminders {
     if (await notificationManager.isNotificationEnabled()) return;
     await notificationManager.requestEnableNotification(this.context);
     if (!await notificationManager.isNotificationEnabled()) {
-      const error = new Error('通知未授权，请在系统设置中允许跑迹发送通知') as BusinessError;
-      error.code = 1700001;
+      const error: Error = new Error('通知未授权，请在系统设置中允许跑迹发送通知');
+      (error as BusinessError).code = 1700001;
       throw error;
     }
   }
@@ -143,11 +143,11 @@ export default class TrainingReminders {
         }
       }
       if (restoreFailed) {
-        const error = new Error('原提醒恢复失败，当前状态不确定，请关闭提醒后重新开启') as BusinessError;
-        error.code = -1;
+        const error: Error = new Error('原提醒恢复失败，当前状态不确定，请关闭提醒后重新开启');
+        (error as BusinessError).code = -1;
         throw error;
       }
-      throw err;
+      throw err as Error;
     }
   }
 }
