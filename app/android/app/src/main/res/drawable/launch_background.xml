@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 纯白启动底：无 logo。原生窗口只作为 splash.mp4 白色首帧的延伸，
-     用户感知上只有一个启动页（视频），播完进主页。 -->
+<!-- 系统启动窗口跟随系统昼夜资源；Flutter 首帧再使用已保存的应用主题。
+     这里只显示底色，品牌动画由 SplashGate 绘制，不再播放固定白底视频。 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
+    <item android:drawable="@color/launch_background" />
 </layer-list>

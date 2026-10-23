@@ -21,12 +21,18 @@ class ThemeController extends ChangeNotifier {
   AppThemeStyle? _lastAutoStyle;
 
   Future<void> load() async {
-    final sp = await SharedPreferences.getInstance();
-    final v = sp.getString(_key);
-    mode = AppThemeMode.values.firstWhere(
-      (m) => m.name == v,
-      orElse: () => AppThemeMode.auto,
-    );
+    try {
+      final sp = await SharedPreferences.getInstance().timeout(
+        const Duration(seconds: 2),
+      );
+      final v = sp.getString(_key);
+      mode = AppThemeMode.values.firstWhere(
+        (m) => m.name == v,
+        orElse: () => AppThemeMode.auto,
+      );
+    } on Object {
+      // 损坏/不可用/迟迟无响应的偏好不能阻塞冷启动，保留当前默认主题。
+    }
     _syncAutoTimer();
     notifyListeners();
   }

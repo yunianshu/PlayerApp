@@ -286,6 +286,34 @@ void main() {
     },
   );
 
+  testWidgets('weekly circular toggle does not also expand its parent row', (
+    tester,
+  ) async {
+    var calls = 0;
+    await pumpDashboard(
+      tester,
+      child: DashboardHarness(
+        onComplete: (task, value) async {
+          calls++;
+        },
+      ),
+    );
+    final toggle = find.byKey(
+      const ValueKey('training-week-complete-2026-10-27'),
+    );
+    await reveal(tester, toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(find.text('恢复 / 力量 · 已完成'), findsOneWidget);
+    expect(find.text('休息或步行，并完成温和的髋部与核心力量练习。'), findsNothing);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.text('恢复 / 力量 · 已完成'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'pending reminders disable controls and explain finite daily summary',
     (tester) async {
@@ -347,6 +375,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await screenshot(tester, 'training-${mode.name}-details');
+      final toggle = find.byKey(
+        const ValueKey('training-week-complete-2026-10-23'),
+      );
+      await reveal(tester, toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      await screenshot(tester, 'training-${mode.name}-checked-details');
+      expect(tester.takeException(), isNull);
     });
   }
 }

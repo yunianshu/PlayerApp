@@ -2,11 +2,9 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'widgets/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
-import 'package:video_player/video_player.dart';
 
 import 'core/i18n.dart';
 import 'core/prefs.dart';
@@ -27,6 +25,7 @@ import 'services/courses.dart';
 import 'services/diagnostics.dart';
 import 'services/tts_service.dart';
 import 'widgets/splash_gate.dart';
+import 'widgets/app_toast.dart';
 
 Future<void> main() async {
   await runZonedGuarded<Future<void>>(
@@ -37,17 +36,16 @@ Future<void> main() async {
       unawaited(Diagnostics.logStartup());
       final themeController = ThemeController();
       final localeController = LocaleController.instance;
-      // runApp 前只等待首帧必需的主题/语言；品牌动画的预初始化与 runApp
-      // 并行——SplashGate 在视频就绪前盖白底（与原生启动窗口同色），
-      // 就绪后播放。冷启动视频初始化偏慢时也不会丢动画或白等。
-      final splashFuture = _preloadSplashVideo();
-      await Future.wait([themeController.load(), localeController.load()]);
-      runApp(
-        RunTrailApp(
-          themeController: themeController,
-          splashFuture: splashFuture,
+      // 在首帧前恢复保存的主题和语言；过场与首页共用同一调色板。
+      // 偏好通道异常或无响应也必须继续启动，不能无限停在原生启动页。
+      await Future.wait([
+        themeController.load(),
+        localeController.load().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () {},
         ),
-      );
+      ]);
+      runApp(RunTrailApp(themeController: themeController, showSplash: true));
     },
     (error, stack) {
       // runZonedGuarded 兜底：Diagnostics.install 已接管 PlatformDispatcher，
@@ -57,36 +55,16 @@ Future<void> main() async {
   );
 }
 
-/// 预初始化启动动画控制器（与 runApp 并行），失败返回 null：
-/// 品牌动画是锦上添花，任何异常都不能拖垮启动。
-Future<VideoPlayerController?> _preloadSplashVideo() async {
-  final controller = VideoPlayerController.asset('assets/splash.mp4');
-  try {
-    // 测试环境等场景平台通道可能永不返回，必须带超时。
-    // 不阻塞 runApp（期间盖白底），可以放宽些，冷启动也能播上动画。
-    await controller.initialize().timeout(const Duration(milliseconds: 3500));
-    await controller.setVolume(0);
-    return controller;
-  } on Object {
-    try {
-      await controller.dispose();
-    } on Object {
-      // dispose 过程自身也可能抛错（如超时后仍在初始化）：吞掉，不影响启动。
-    }
-    return null;
-  }
-}
-
 class RunTrailApp extends StatelessWidget {
   final ThemeController themeController;
 
-  /// main 启动的动画预初始化 Future；完成值 null 表示失败，跳过动画。
-  final Future<VideoPlayerController?>? splashFuture;
+  /// 正常冷启动播放一次；组件/页面测试和嵌入场景默认不播放。
+  final bool showSplash;
 
   const RunTrailApp({
     super.key,
     required this.themeController,
-    this.splashFuture,
+    this.showSplash = false,
   });
 
   @override
@@ -127,12 +105,8 @@ class RunTrailApp extends StatelessWidget {
                 debugShowCheckedModeBanner: false,
                 // ThemeController 已解析 auto/时间逻辑，直接给出目标风格。
                 theme: buildTheme(tc.effectiveStyle),
-                // 启动时全屏播放品牌动画，播完进入主界面；就绪前盖白底
-                // （原生启动窗口同色），失败/超时则直接进主界面。
-                home: SplashGate(
-                  controllerFuture: splashFuture,
-                  child: const HomeShell(),
-                ),
+                // 启动动画跟随已保存主题；首页同时预热且不因过场移除重建。
+                home: SplashGate(enabled: showSplash, child: const HomeShell()),
               ),
             ),
           );
