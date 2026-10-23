@@ -29,6 +29,8 @@ class MarathonTrainingDashboard extends StatefulWidget {
     this.reminderBusy = false,
     this.usesDailySummary = false,
     this.now,
+    this.planName = '厦门马拉松',
+    this.goalSummary = '目标先按 5 小时 15 分评估',
   });
 
   final List<TrainingTask> tasks;
@@ -44,6 +46,7 @@ class MarathonTrainingDashboard extends StatefulWidget {
   final VoidCallback onReminderTime;
   final bool aiBusy, reminderBusy, usesDailySummary;
   final DateTime? now;
+  final String planName, goalSummary;
 
   @override
   State<MarathonTrainingDashboard> createState() =>
@@ -360,7 +363,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
         children: [
           Expanded(
             child: Text(
-              race?.title ?? '马拉松训练计划',
+              widget.planName,
               style: appTextStyle(p, fontSize: 18, fontWeight: FontWeight.w700),
             ),
           ),
@@ -384,7 +387,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '厦门马拉松',
+                    widget.planName,
                     style: appTextStyle(
                       p,
                       fontSize: 28,
@@ -460,7 +463,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
         ),
         const SizedBox(height: 9),
         Text(
-          '目标先按 5 小时 15 分评估',
+          widget.goalSummary,
           style: appTextStyle(p, fontSize: 11, color: p.textSecondary),
         ),
       ],
@@ -796,12 +799,12 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                       : Icons.chat_bubble_outline_rounded,
                   size: 16,
                 ),
-                label: Text(widget.aiBusy ? '分析中…' : 'AI 教练分析'),
+                label: Text(widget.aiBusy ? '分析中…' : 'AI 调整计划'),
               ),
               TextButton.icon(
                 onPressed: widget.onSuggestAdjustments,
                 icon: const Icon(Icons.tune_rounded, size: 16),
-                label: const Text('评估未来 7 天'),
+                label: const Text('本地规则评估 7 天'),
               ),
             ],
           ),

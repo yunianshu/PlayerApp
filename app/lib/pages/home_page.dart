@@ -237,7 +237,7 @@ class HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '2027厦门马拉松训练计划',
+                    '马拉松训练计划 · 我的赛事',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,

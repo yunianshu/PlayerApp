@@ -55,6 +55,8 @@ class DashboardHarness extends StatefulWidget {
     this.onFeedback,
     this.onComplete,
     this.reminderBusy = false,
+    this.planName = '厦门马拉松',
+    this.goalSummary = '目标先按 5 小时 15 分评估',
   });
   final List<TrainingTask> tasks;
   final DateTime? now;
@@ -62,6 +64,7 @@ class DashboardHarness extends StatefulWidget {
   final ValueChanged<TrainingTask>? onFeedback;
   final Future<void> Function(TrainingTask, bool)? onComplete;
   final bool reminderBusy;
+  final String planName, goalSummary;
   @override
   State<DashboardHarness> createState() => _DashboardHarnessState();
 }
@@ -87,6 +90,8 @@ class _DashboardHarnessState extends State<DashboardHarness> {
     ),
     body: MarathonTrainingDashboard(
       tasks: widget.tasks,
+      planName: widget.planName,
+      goalSummary: widget.goalSummary,
       now: widget.now ?? DateTime(2026, 10, 26),
       completed: done,
       runsByDate: const {},
@@ -190,6 +195,27 @@ Future<void> screenshot(WidgetTester tester, String name) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets(
+    'custom race and goal replace Xiamen branding in both orientations',
+    (tester) async {
+      const custom = DashboardHarness(
+        planName: '杭州马拉松',
+        goalSummary: '目标：健康完赛',
+      );
+      await pumpDashboard(tester, child: custom);
+      expect(find.text('杭州马拉松'), findsOneWidget);
+      expect(find.text('目标：健康完赛'), findsOneWidget);
+      expect(find.text('厦门马拉松'), findsNothing);
+      await pumpDashboard(tester, child: custom, width: 1000, height: 600);
+      expect(find.text('杭州马拉松'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('training-month-calendar')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'portrait swipes dates, handles gaps, picker and rotation stay synced',
