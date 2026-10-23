@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:runtrail/core/i18n.dart';
 import 'package:runtrail/core/theme_controller.dart';
+import 'package:runtrail/core/launcher_icon_controller.dart';
 import 'package:runtrail/data/database.dart';
 import 'package:runtrail/main.dart';
 import 'package:runtrail/models/run_record.dart';
@@ -35,6 +36,10 @@ RunRecord record(double km, DateTime time) => RunRecord(
 Widget wrap(Widget child) => MultiProvider(
   providers: [
     ChangeNotifierProvider(create: (_) => ThemeController()),
+    ChangeNotifierProvider(
+      create: (context) =>
+          LauncherIconController(context.read<ThemeController>())..load(),
+    ),
     ChangeNotifierProvider.value(value: LocaleController.instance),
   ],
   child: MaterialApp(home: child),
@@ -60,6 +65,24 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
   tearDown(() async => RunDatabase.instance.close());
+  testWidgets(
+    'launcher follow-theme setting is explicit and disabled on unsupported builds',
+    (tester) async {
+      await tester.pumpWidget(wrap(const ProfilePage()));
+      await load(tester);
+      await tester.dragUntilVisible(
+        find.text('桌面图标跟随主题'),
+        find.byType(ListView).first,
+        const Offset(0, -280),
+      );
+      final tile = tester.widget<SwitchListTile>(
+        find.widgetWithText(SwitchListTile, '桌面图标跟随主题'),
+      );
+      expect(tile.value, isFalse);
+      expect(tile.onChanged, isNull);
+      expect(find.text('当前平台或安装包暂不支持，保留默认图标'), findsOneWidget);
+    },
+  );
   testWidgets('B01 about button must work without provider assertion', (
     tester,
   ) async {

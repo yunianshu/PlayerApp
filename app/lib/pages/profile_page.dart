@@ -21,6 +21,7 @@ import '../core/i18n.dart';
 import '../core/prefs.dart';
 import '../core/theme.dart';
 import '../core/theme_controller.dart';
+import '../core/launcher_icon_controller.dart';
 import '../data/database.dart';
 import '../models/run_record.dart';
 import '../services/app_data.dart';
@@ -758,6 +759,38 @@ class _ProfilePageState extends State<ProfilePage> {
             '外观主题'.tr,
             themeLabel,
             onTap: _pickTheme,
+          ),
+          Divider(height: 1, color: c.divider),
+          Consumer<LauncherIconController>(
+            builder: (context, icons, _) => SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                '桌面图标跟随主题',
+                style: TextStyle(fontSize: 14, color: c.textPrimary),
+              ),
+              subtitle: Text(
+                !icons.loaded
+                    ? '正在检查支持情况…'
+                    : !icons.supported
+                    ? '当前平台或安装包暂不支持，保留默认图标'
+                    : icons.error ?? '桌面刷新可能稍有延迟；自动主题在应用运行或返回时同步',
+                style: TextStyle(fontSize: 11, color: c.textSecondary),
+              ),
+              value: icons.supported && icons.enabled,
+              activeThumbColor: c.accent,
+              onChanged: !icons.loaded || !icons.supported || icons.busy
+                  ? null
+                  : (value) async {
+                      final ok = await icons.setEnabled(value);
+                      if (!context.mounted) return;
+                      showAppToast(
+                        context,
+                        ok
+                            ? (value ? '已开启桌面图标跟随主题' : '已恢复默认桌面图标')
+                            : '桌面图标设置失败，应用主题不受影响',
+                      );
+                    },
+            ),
           ),
           Divider(height: 1, color: c.divider),
           _row(

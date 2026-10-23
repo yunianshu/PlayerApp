@@ -133,3 +133,45 @@ EntryAbility 已声明 `backgroundModes: ["location"]`；申请 LOCATION 长时�
 `tracking_location_settings.dart` 为鸿蒙明确传入 `timeInterval: 1000` 毫秒，由插件换算为 1 秒，并设置 30 秒无位置回调超时。超时后跑步页显示定位异常，5 秒后重连；断开前后的坐标不会直接累计为里程。Android/iOS 的定位设置保持原有行为。
 
 在“我的 → 诊断日志”检查 `GPS subscribe`（应包含 `timeInterval: 1000`）、`GPS first fix` 和 `GPS stream` 错误记录。首个有效位置到达后，户外以正常跑步速度移动 50–100 米，确认轨迹、公里数和配速持续变化；再验证暂停恢复、锁屏及前后台切换。精度超过 25 米的点仍被过滤，不应以室内测试结果代替户外验收。
+
+## 可选试验：桌面图标跟随三主题（API 26.0.0）
+
+普通构建保持原流程和原默认图标。当前源码中的 `LauncherIconSupport` 明确返回不支持，
+不会伪装切换成功，也不会直接引用旧 SDK 无法解析的新 API。
+
+若要在支持备用图标的鸿蒙设备上尝试，使用已安装且相互匹配的 **API 26.0.0+ DevEco Studio / Command Line Tools**，
+将 `tool/ohos.local.json` 的 `deveco_home` 指向该安装目录，再执行：
+
+```sh
+cd app
+python tool/ohos_build.py debug --launcher-icons
+```
+
+该参数不是系统 SDK 升级器，不会安装工具、修改签名、改变 App ID 或覆盖生产配置。
+构建前会检查选定工具链 `sdk/default` 的公开 `setAlternateIcon` / `getAlternateIcons` 声明，以及 SDK / Hvigor 的
+`alternateIcons` 打包 schema。缺少任一项立即失败，不能仅凭“鸿蒙 7”或 SDK 文件夹名称断定支持。
+如果检查失败，请选择配套的新工具链，不要绕过检查向旧打包器强塞字段。
+
+通过检查后，仅在 `build/ohos-workspace` 生成副本内：
+
+- 替换为实际调用 `bundleManager.getAlternateIcons()` / `setAlternateIcon()` 的 ArkTS 桥接；
+- 注入 `app.json5` 的三套备用图标声明和现有 Logo 的三主题 SVG 资源；
+- 保留原 `targetSdkVersion`、`compatibleSdkVersion`、签名和发布流程；编译 SDK 来自选择的 DevEco 工具链；
+- 将试验 HAP 单独输出到 `build/ohos/launcher-icons-hap`，不覆盖普通 HAP 输出目录。
+
+构建 SDK 与目标 SDK 不同。`targetSdkVersion: 6.0.2(22)` 本身不代表实际编译工具只能使用 API22。
+本试验使用新的编译工具，保持原目标/最低系统版本，用 `deviceInfo.sdkApiVersion >= 26` 在运行时隔离新接口。
+旧设备直接返回不支持，不调用新 API；新设备还必须成功查询到安装包内三个有效的备用图标资源才启用开关。
+调用后读取启用状态，未确认成功时报告错误并尽量恢复原图标。关闭开关传空名称恢复默认图标。
+系统自定义图标、应用分身和具体桌面行为仍可能限制切换，不应把 API 存在等同于桌面必然立即刷新。
+
+**验证边界：** 目前仅完成隔离构建脚本/资源/桥接的自动化检查，未在 API26 原生编译器、模拟器或真机上验证。
+需要在 ZCode 原构建环境完成实际编译，再测试：三个主题轮换、关闭恢复、快速重复切换、杀进程重启、
+升级安装后桌面入口、通知打开 App，以及旧版本设备不触发新 API。原 `--launcher-icons` 之外的构建不受该试验影响。
+如果原生编译器要求对 schema 或接口使用进行进一步适配，应据真实报错修复，不能直接宣称 HAP 已适配完成。
+
+官方依据：
+- [华为拆包工具：alternateIcons 与 AlternateIcon 自 API 26.0.0 支持](https://developer.huawei.com/consumer/cn/doc/doccenter-capabilities/unpacking-tool)
+- [华为升级与兼容指南：编译 SDK、目标 SDK 和最低兼容版本的关系](https://developer.huawei.com/consumer/en/doc/harmonyos-releases/upgrade-adaptation)
+- [OpenHarmony 官方 SDK 声明](https://github.com/openharmony/interface_sdk-js/blob/master/api/%40ohos.bundle.bundleManager.d.ts)
+- [OpenHarmony 官方备用图标配置说明](https://github.com/openharmony/docs/blob/master/zh-cn/application-dev/quick-start/app-configuration-file.md)

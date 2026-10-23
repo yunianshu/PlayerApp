@@ -78,8 +78,9 @@ object TrainingAlarms {
                 "马拉松训练提醒", NotificationManager.IMPORTANCE_DEFAULT))
         }
         val open = PendingIntent.getActivity(context, 0,
-            context.packageManager.getLaunchIntentForPackage(context.packageName)
-                ?: Intent(context, MainActivity::class.java),
+            // Target the permanent activity, not an alias that can be disabled later.
+            Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         manager.notify(id, NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.mipmap.ic_launcher)
