@@ -67,7 +67,7 @@ class HttpAiCoachTransport implements AiCoachTransport {
     req.followRedirects = false;
     req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
     req.headers.contentType = ContentType.json;
-    req.write(jsonEncode(body));
+    req.write(jsonEncode(requestBody(endpoint, body)));
     final resp = await req.close();
     if (resp.statusCode != 200) {
       throw AiCoachException(httpErrorMessage(resp.statusCode));
@@ -79,11 +79,11 @@ class HttpAiCoachTransport implements AiCoachTransport {
       }
       bytes.addAll(chunk);
     }
-    return parseCompletion(utf8.decode(bytes));
+    return parseCompletion(utf8.decode(bytes), endpoint: endpoint);
   }
 
   static String httpErrorMessage(int status) {
-    if (status == 401 || status == 403) return '认证失败，请检查 API Key 和模型访问权限';
+    if (status == 401 || status == 403) return '认证失败，请检查 API Key、模型权限和套餐是否有效';
     if (status == 404) return '接口或模型不存在，请检查完整 API 地址与模型名称';
     if (status == 429) return '请求受限或额度不足，请检查服务商账户后重试';
     if (status >= 300 && status < 400) return '接口返回重定向，已阻止转发密钥，请填写最终 HTTPS 地址';
@@ -91,18 +91,56 @@ class HttpAiCoachTransport implements AiCoachTransport {
     return '模型接口返回 HTTP $status，请检查服务设置';
   }
 
-  static String parseCompletion(String body) {
+  /// Kimi's current models reject sampling overrides (official models-overview).
+  /// Match the complete reviewed destination, never a look-alike host.
+  static Map<String, Object> requestBody(
+    Uri endpoint,
+    Map<String, Object> body,
+  ) {
+    final result = Map<String, Object>.from(body);
+    if (endpoint.toString() == 'https://api.moonshot.cn/v1/chat/completions') {
+      result.remove('temperature');
+      result.remove('top_p');
+    }
+    if (endpoint.toString() ==
+        'https://api.xiaomimimo.com/v1/chat/completions') {
+      // MiMo documents max_completion_tokens, which includes reasoning tokens.
+      final budget = result.remove('max_tokens');
+      if (budget != null) {
+        result.putIfAbsent('max_completion_tokens', () => budget);
+      }
+      result.remove('temperature');
+      result.remove('top_p');
+    }
+    return result;
+  }
+
+  static String parseCompletion(String body, {Uri? endpoint}) {
     final parsed = jsonDecode(body);
     final choices = parsed is Map ? parsed['choices'] : null;
     if (choices is! List || choices.isEmpty || choices.first is! Map) {
       throw const AiCoachException('模型响应缺少有效 choices');
+    }
+    if ((choices.first as Map)['finish_reason'] == 'length') {
+      throw const AiCoachException('模型输出达到长度上限，未获得完整结果，请重试或选择其他模型');
     }
     final message = (choices.first as Map)['message'];
     final content = message is Map ? message['content'] : null;
     if (content is! String || content.trim().isEmpty) {
       throw const AiCoachException('模型响应内容为空');
     }
-    return content.trim();
+    var answer = content.trim();
+    if (endpoint?.toString() == 'https://api.minimax.cn/v1/chat/completions') {
+      // MiniMax documents a leading reasoning block in OpenAI content. Never
+      // expose it as the plan, and never repair a partial/truncated answer.
+      answer = answer
+          .replaceFirst(RegExp(r'^<think>[\s\S]*?</think>\s*'), '')
+          .trim();
+      if (answer.isEmpty || answer.startsWith('<think>')) {
+        throw const AiCoachException('模型仅返回思考内容或输出被截断，请重试');
+      }
+    }
+    return answer;
   }
 }
 
@@ -130,7 +168,17 @@ class AiTrainingCoach {
       apiKey: apiKey,
       body: {
         'model': model,
-        'max_tokens': 8,
+        'max_tokens':
+            const {
+              'api.deepseek.com',
+              'api.moonshot.cn',
+              'api.minimax.cn',
+              'open.bigmodel.cn',
+              'dashscope.aliyuncs.com',
+              'api.xiaomimimo.com',
+            }.contains(endpoint.host)
+            ? 4096
+            : 8,
         'messages': [
           {'role': 'user', 'content': 'Reply with OK.'},
         ],

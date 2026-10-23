@@ -3,12 +3,21 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'ai_provider_catalog.dart';
+
 /// Non-secret settings. The credential is deliberately not part of preferences
 /// or RunTrail's JSON backup. Only OpenAI-compatible Chat Completions is used.
 class AiCoachConfig {
   final String endpoint;
   final String model;
-  const AiCoachConfig({required this.endpoint, required this.model});
+  final String? providerId;
+  final String accessMode;
+  const AiCoachConfig({
+    required this.endpoint,
+    required this.model,
+    this.providerId,
+    this.accessMode = 'standard',
+  });
 
   Uri get uri => Uri.parse(endpoint);
 
@@ -33,8 +42,26 @@ class AiCoachConfig {
   }
 
   void validate() {
-    final error = endpointError(endpoint) ?? modelError(model);
+    final error =
+        endpointError(endpoint) ??
+        modelError(model) ??
+        (const {'standard', 'tokenPlan'}.contains(accessMode)
+            ? null
+            : '接入类型无效');
     if (error != null) throw AiSettingsException(error);
+    final provider = providerId == null
+        ? null
+        : AiProviderCatalog.byId(providerId!);
+    if (providerId != null &&
+        (provider == null || provider.chatEndpoint != endpoint)) {
+      throw const AiSettingsException('平台与服务地址不匹配，请重新选择平台');
+    }
+    if (accessMode == 'tokenPlan' &&
+        (provider == null ||
+            !provider.supportsTokenPlan ||
+            !provider.tokenPlanModels.contains(model))) {
+      throw const AiSettingsException('该平台、模型或套餐不适用于本应用，请重新选择');
+    }
   }
 }
 
@@ -110,6 +137,12 @@ class AiCoachSettingsStore {
           final candidate = AiCoachConfig(
             endpoint: data['endpoint'] as String,
             model: data['model'] as String,
+            providerId: data['providerId'] is String
+                ? data['providerId'] as String
+                : null,
+            accessMode: data['accessMode'] is String
+                ? data['accessMode'] as String
+                : 'standard',
           );
           candidate.validate();
           config = candidate;
@@ -133,6 +166,8 @@ class AiCoachSettingsStore {
         final data = jsonDecode(envelope);
         if (data is Map &&
             data['endpoint'] == config.endpoint &&
+            (data['accessMode'] ?? 'standard') == config.accessMode &&
+            data['providerId'] == config.providerId &&
             data['apiKey'] is String &&
             AiCoachConfig.keyError(data['apiKey'] as String) == null) {
           key = data['apiKey'] as String;
@@ -166,7 +201,12 @@ class AiCoachSettingsStore {
     final key = apiKey.trim();
     final error = AiCoachConfig.keyError(key);
     if (error != null) throw AiSettingsException(error);
-    final envelope = jsonEncode({'endpoint': config.endpoint, 'apiKey': key});
+    final envelope = jsonEncode({
+      'endpoint': config.endpoint,
+      'providerId': config.providerId,
+      'accessMode': config.accessMode,
+      'apiKey': key,
+    });
     if (persistKey && utf8.encode(envelope).length > 1024) {
       throw const AiSettingsException('地址与密钥超出安全存储的 1024 字节限制');
     }
@@ -189,7 +229,12 @@ class AiCoachSettingsStore {
     final prefs = await SharedPreferences.getInstance();
     if (!await prefs.setString(
       preferencesKey,
-      jsonEncode({'endpoint': config.endpoint, 'model': config.model}),
+      jsonEncode({
+        'endpoint': config.endpoint,
+        'model': config.model,
+        'providerId': config.providerId,
+        'accessMode': config.accessMode,
+      }),
     )) {
       throw const AiSettingsException('设置保存失败，请重试');
     }

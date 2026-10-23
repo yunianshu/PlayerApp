@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:runtrail/services/marathon_training_service.dart';
+import 'package:runtrail/services/training_plan_catalog.dart';
 import 'package:runtrail/services/training_reminder_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,6 +33,48 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
+
+  test(
+    'switching plans cancels old schedule and schedules only active race',
+    () async {
+      await TrainingReminderService.configure(enabled: true);
+      await TrainingPlanCatalog.addDraft({
+        'id': 'other-race',
+        'name': '其他马拉松',
+        'raceDate': '2026-11-01',
+        'raceDistanceKm': 42.195,
+        'tasks': [
+          {
+            'date': '2026-10-24',
+            'type': 'EASY',
+            'title': '轻松跑',
+            'km': 4.0,
+            'notes': '测试',
+          },
+          {
+            'date': '2026-11-01',
+            'type': 'RACE',
+            'title': '其他比赛',
+            'km': 42.195,
+            'notes': '测试',
+          },
+        ],
+      });
+      await TrainingReminderService.configure(enabled: false);
+      await TrainingPlanCatalog.activate('other-race');
+      await TrainingReminderService.configure(enabled: true);
+      expect(calls.map((c) => c.method), [
+        'replaceDaily',
+        'cancel',
+        'replaceDaily',
+      ]);
+      expect(
+        (calls.last.arguments as Map)['end'],
+        DateTime(2026, 11, 1, 23, 59, 59).millisecondsSinceEpoch,
+      );
+      expect((await MarathonTrainingService.load()).last.title, '其他比赛');
+    },
+  );
 
   test('80 days use one daily recurrence ending on the final plan day', () async {
     await TrainingReminderService.configure(enabled: true);
