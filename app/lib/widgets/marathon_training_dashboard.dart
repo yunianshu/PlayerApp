@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 import '../services/marathon_training_service.dart';
+import 'training_completion_toggle.dart';
 
 /// A date-first training view. All workout content remains available, including
 /// on narrow screens and with large text; motion is only a response to input.
@@ -1020,20 +1021,15 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                           color: p.textSecondary,
                         ),
                       ),
-                      SizedBox(
-                        width: 44,
-                        height: 48,
-                        child: Semantics(
-                          label: '${task.date} ${task.title}完成状态',
-                          child: Checkbox(
-                            value: done,
-                            activeColor: p.accent,
-                            checkColor: (p.isDark ? p.bg : p.onAccent),
-                            onChanged: _savingDates.isNotEmpty
-                                ? null
-                                : (_) => _complete(task),
-                          ),
-                        ),
+                      TrainingCompletionToggle(
+                        key: ValueKey('training-week-complete-${task.date}'),
+                        value: done,
+                        label: '${task.date} ${task.title}完成状态',
+                        palette: p,
+                        busy: _savingDates.contains(task.date),
+                        onPressed: _savingDates.isNotEmpty
+                            ? null
+                            : () => _complete(task),
                       ),
                     ],
                   ),
