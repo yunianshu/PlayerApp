@@ -161,4 +161,47 @@ void main() {
     expect(settings['hour'], 10);
     expect(await TrainingReminderService.time(), (10, 0));
   });
+  test('quota error includes validated counts and never claims to delete other reminders', () async {
+    respond = (_) async => throw PlatformException(
+      code: 'reminder_1700002',
+      details: '{"visible":30,"owned":2,"stage":"failed-preserved","api":22}',
+    );
+    await expectLater(
+      TrainingReminderService.configure(enabled: true),
+      throwsA(
+        isA<TrainingReminderException>()
+            .having((e) => e.message, 'counts', contains('本应用可见30条，其中训练提醒2条'))
+            .having((e) => e.message, 'safety', contains('不会清理其他功能')),
+      ),
+    );
+    expect(await TrainingReminderService.enabled(), isFalse);
+  });
+
+  test('quota diagnostic malformed or inconsistent counts do not mask native failure', () {
+    for (final details in [
+      'not json',
+      '{"visible":1,"owned":2}',
+      '{"visible":-1,"owned":0}',
+      '{"visible":"secret","owned":0}',
+      '[]',
+    ]) {
+      final message = TrainingReminderService.describePlatformError(
+        PlatformException(code: 'reminder_1700002', details: details),
+      );
+      expect(message, contains('1700002'));
+      expect(message, isNot(contains('本应用可见')));
+      expect(message, isNot(contains('secret')));
+    }
+  });
+
+  test('quota failure preserves enabled setting and selected time', () async {
+    await TrainingReminderService.configure(enabled: true, hour: 7, minute: 30);
+    respond = (_) async => throw PlatformException(code: 'reminder_1700002');
+    await expectLater(
+      TrainingReminderService.configure(enabled: true, hour: 8),
+      throwsA(isA<TrainingReminderException>()),
+    );
+    expect(await TrainingReminderService.enabled(), isTrue);
+    expect(await TrainingReminderService.time(), (7, 30));
+  });
 }

@@ -80,7 +80,7 @@ void main() {
       );
       expect(tile.value, isFalse);
       expect(tile.onChanged, isNull);
-      expect(find.text('当前平台或安装包暂不支持，保留默认图标'), findsOneWidget);
+      expect(find.text('当前安装包未注册桌面图标接口，请确认已安装最新构建。'), findsOneWidget);
     },
   );
   testWidgets('B01 about button must work without provider assertion', (

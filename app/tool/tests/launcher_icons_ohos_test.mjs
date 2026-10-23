@@ -102,3 +102,28 @@ test('native concurrent change rejected, pending operation remains consistent', 
   assert.equal((await first).ok, true);
   assert.equal(f.current, 'runtrail_light');
 });
+
+// Diagnostics must not collapse build configuration and device capability.
+test('diagnostics distinguish API version, resources and native query error', async () => {
+  assert.equal((await fixture({ version: 22 }).call('getSupportDetails')).value.reason, 'device_api_low');
+  assert.equal((await fixture({ missing: true }).call('getSupportDetails')).value.reason, 'missing_icons');
+  const f = fixture(); f.failQuery();
+  const detail = (await f.call('getSupportDetails')).value;
+  assert.equal(detail.reason, 'api_error');
+  assert.equal(detail.nativeError, 17700311);
+  assert.equal(detail.deviceApi, 26);
+});
+test('normal HAP diagnoses build mode rather than blaming the device', async () => {
+  const stub = readFileSync(new URL('../../ohos/entry/src/main/ets/appearance/LauncherIconSupport.ets', import.meta.url), 'utf8')
+    .replace(/^import .*;\n/gm, '').replace('export default class', 'class');
+  let handler;
+  const context = { deviceInfo: { sdkApiVersion: 26 },
+    MethodChannel: class { setMethodCallHandler(value) { handler = value; } } };
+  vm.runInNewContext(stripTypeScriptTypes(stub) + '\nglobalThis.Subject = LauncherIconSupport;', context);
+  context.Subject.register({ dartExecutor: { getBinaryMessenger() {} } });
+  let detail;
+  handler.onMethodCall({ method: 'getSupportDetails' }, { success(value) { detail = value; } });
+  assert.equal(detail.supported, false);
+  assert.equal(detail.reason, 'build_not_enabled');
+  assert.equal(detail.deviceApi, 26);
+});

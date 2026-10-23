@@ -356,7 +356,7 @@ class _ProfilePageState extends State<ProfilePage> {
               20,
               MediaQuery.of(context).padding.top + 8,
               20,
-              110,
+              tabScrollBottomPadding(context),
             ),
             children: [
               _header(c),
@@ -772,10 +772,17 @@ class _ProfilePageState extends State<ProfilePage> {
                 !icons.loaded
                     ? '正在检查支持情况…'
                     : !icons.supported
-                    ? '当前平台或安装包暂不支持，保留默认图标'
+                    ? icons.supportState.description
                     : icons.error ?? '桌面刷新可能稍有延迟；自动主题在应用运行或返回时同步',
                 style: TextStyle(fontSize: 11, color: c.textSecondary),
               ),
+              secondary: !icons.supported && icons.loaded
+                  ? IconButton(
+                      tooltip: '重新检测桌面图标支持情况',
+                      icon: Icon(Icons.refresh, color: c.accent),
+                      onPressed: icons.busy ? null : icons.refreshSupport,
+                    )
+                  : null,
               value: icons.supported && icons.enabled,
               // Flutter 3.47 弃用 activeColor；鸿蒙 3.22 无 activeThumbColor。
               // ignore: deprecated_member_use

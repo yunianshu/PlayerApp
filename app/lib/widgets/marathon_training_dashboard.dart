@@ -1,12 +1,11 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 import '../services/marathon_training_service.dart';
 import 'training_completion_toggle.dart';
+import 'training_month_calendar.dart';
 
-/// A date-first training view. All workout content remains available, including
+/// A session-first training view. All workout content remains available, including
 /// on narrow screens and with large text; motion is only a response to input.
 class MarathonTrainingDashboard extends StatefulWidget {
   const MarathonTrainingDashboard({
@@ -52,10 +51,10 @@ class MarathonTrainingDashboard extends StatefulWidget {
 
 class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
   String? _selectedDate;
+  int _calendarReset = 0;
   final Set<String> _expandedDates = {};
   final Set<String> _savingDates = {};
-  final ScrollController _weekScroll = ScrollController();
-  bool _positionedInitialWeek = false;
+  bool _initializedTodayExpansion = false;
 
   DateTime get _now => widget.now ?? DateTime.now();
   String get _today => _dateKey(_now);
@@ -89,24 +88,29 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
   }
 
   @override
-  void dispose() {
-    _weekScroll.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _initializeTodayExpansion();
+  }
+
+  @override
+  void didUpdateWidget(covariant MarathonTrainingDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _initializeTodayExpansion();
+  }
+
+  // Apply the default only once, after tasks arrive. Later rebuilds, theme
+  // changes, completion saves and navigation must preserve the user's choice.
+  void _initializeTodayExpansion() {
+    if (_initializedTodayExpansion || widget.tasks.isEmpty) return;
+    _initializedTodayExpansion = true;
+    if (widget.tasks.any((task) => task.date == _today)) {
+      _expandedDates.add(_today);
+    }
   }
 
   void _select(TrainingTask task) {
     setState(() => _selectedDate = task.date);
-  }
-
-  void _selectWeek(List<TrainingTask> tasks, DateTime monday) {
-    final matches = tasks.where((task) => _monday(_day(task.date)) == monday);
-    if (matches.isEmpty) return;
-    _select(
-      matches.firstWhere(
-        (task) => task.date == _today,
-        orElse: () => matches.first,
-      ),
-    );
   }
 
   Future<void> _complete(TrainingTask task) async {
@@ -136,28 +140,6 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
     }
     final selected = _selected(tasks);
     final monday = _monday(_day(selected.date));
-    final weeks = tasks
-        .map((task) => _monday(_day(task.date)))
-        .toSet()
-        .toList();
-    final weekIndex = weeks.indexOf(monday);
-    final weekChipWidth = math.max(
-      80.0,
-      MediaQuery.textScalerOf(context).scale(13) * 4 + 34,
-    );
-    if (!_positionedInitialWeek) {
-      _positionedInitialWeek = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _weekScroll.hasClients) {
-          _weekScroll.jumpTo(
-            (weekIndex * (weekChipWidth + 8)).clamp(
-              0.0,
-              _weekScroll.position.maxScrollExtent,
-            ),
-          );
-        }
-      });
-    }
     final weekTasks = tasks
         .where((task) => _monday(_day(task.date)) == monday)
         .toList();
@@ -167,7 +149,6 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
     final completedWeek = weekTasks
         .where((task) => widget.completed.contains(task.date))
         .length;
-    final weeklyKm = weekTasks.fold<double>(0, (sum, task) => sum + task.km);
     final todayTask = tasks.where((task) => task.date == _today).firstOrNull;
 
     return ListView(
@@ -175,8 +156,22 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
         _planHeader(p, tasks, completed),
-        const SizedBox(height: 26),
+        const SizedBox(height: 22),
+        AnimatedSize(
+          key: const ValueKey('training-primary-session'),
+          duration: _motion,
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: _motion,
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: _sessionCard(p, selected),
+          ),
+        ),
+        const SizedBox(height: 24),
         Row(
+          key: const ValueKey('training-schedule-navigation'),
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
@@ -193,23 +188,10 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
               TextButton.icon(
                 key: const ValueKey('training-return-today'),
                 onPressed: () {
-                  _select(todayTask);
-                  final index = weeks.indexOf(_monday(_day(todayTask.date)));
-                  if (_weekScroll.hasClients) {
-                    final target = (index * (weekChipWidth + 8)).clamp(
-                      0.0,
-                      _weekScroll.position.maxScrollExtent,
-                    );
-                    if (_motion == Duration.zero) {
-                      _weekScroll.jumpTo(target);
-                    } else {
-                      _weekScroll.animateTo(
-                        target,
-                        duration: _motion,
-                        curve: Curves.easeOutCubic,
-                      );
-                    }
-                  }
+                  setState(() {
+                    _selectedDate = todayTask.date;
+                    _calendarReset++;
+                  });
                 },
                 icon: const Icon(Icons.today_outlined, size: 16),
                 label: const Text('回到今天'),
@@ -217,55 +199,13 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
           ],
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: math.max(
-            48,
-            MediaQuery.textScalerOf(context).scale(13) * 1.4 + 28,
-          ),
-          child: ListView.separated(
-            controller: _weekScroll,
-            scrollDirection: Axis.horizontal,
-            itemCount: weeks.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 8),
-            itemBuilder: (context, index) => SizedBox(
-              width: weekChipWidth,
-              child: _weekChip(
-                p,
-                index,
-                index == weekIndex,
-                () => _selectWeek(tasks, weeks[index]),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '${monday.month}月${monday.day}日 – ${monday.add(const Duration(days: 6)).month}月${monday.add(const Duration(days: 6)).day}日',
-                style: appTextStyle(p, color: p.textSecondary, fontSize: 13),
-              ),
-            ),
-            Text(
-              '计划 ${_km(weeklyKm)} km',
-              style: appTextStyle(p, fontWeight: FontWeight.w600, fontSize: 13),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _dayStrip(p, monday, weekTasks, selected),
-        const SizedBox(height: 18),
-        AnimatedSize(
-          duration: _motion,
-          curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
-          child: AnimatedSwitcher(
-            duration: _motion,
-            switchInCurve: Curves.easeOut,
-            switchOutCurve: Curves.easeIn,
-            child: _sessionCard(p, selected),
-          ),
+        TrainingMonthCalendar(
+          resetRevision: _calendarReset,
+          tasks: tasks,
+          completed: widget.completed,
+          selectedDate: selected.date,
+          today: _today,
+          onSelect: _select,
         ),
         const SizedBox(height: 24),
         _coachPanel(p),
@@ -424,153 +364,6 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
           style: appTextStyle(p, fontSize: 11, color: p.textSecondary),
         ),
       ],
-    );
-  }
-
-  Widget _weekChip(AppPalette p, int index, bool selected, VoidCallback onTap) {
-    return Semantics(
-      selected: selected,
-      button: true,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          child: AnimatedContainer(
-            duration: _motion,
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 13),
-            decoration: BoxDecoration(
-              color: selected ? p.textPrimary : p.surface,
-              border: Border.all(color: selected ? p.textPrimary : p.stroke),
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Text(
-              '第 ${index + 1} 周',
-              textAlign: TextAlign.center,
-              style: appTextStyle(
-                p,
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? p.bg : p.textSecondary,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _dayStrip(
-    AppPalette p,
-    DateTime monday,
-    List<TrainingTask> tasks,
-    TrainingTask selected,
-  ) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = math.max(44.0, (constraints.maxWidth - 30) / 7);
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List.generate(7, (index) {
-              final date = monday.add(Duration(days: index));
-              final key = _dateKey(date);
-              final task = tasks.where((task) => task.date == key).firstOrNull;
-              final active = key == selected.date;
-              final done = widget.completed.contains(key);
-              final foreground = active
-                  ? (p.isDark ? p.bg : p.onAccent)
-                  : task == null
-                  ? p.textMuted
-                  : p.textPrimary;
-              return Padding(
-                padding: EdgeInsets.only(right: index == 6 ? 0 : 5),
-                child: Semantics(
-                  button: true,
-                  selected: active,
-                  label:
-                      '${date.month}月${date.day}日 ${_weekday(date)}${key == _today ? ' 今天' : ''}${done ? ' 已完成' : ''}',
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      key: ValueKey('training-day-$key'),
-                      onTap: task == null ? null : () => _select(task),
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      child: AnimatedContainer(
-                        width: width,
-                        duration: _motion,
-                        curve: Curves.easeOutCubic,
-                        padding: const EdgeInsets.symmetric(vertical: 11),
-                        decoration: BoxDecoration(
-                          color: active ? p.accent : p.surface,
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                          border: Border.all(
-                            color: active
-                                ? p.accent
-                                : key == _today
-                                ? p.accentStroke
-                                : Colors.transparent,
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              const ['一', '二', '三', '四', '五', '六', '日'][index],
-                              style: appTextStyle(
-                                p,
-                                fontSize: 11,
-                                color: foreground,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${date.day}',
-                              style: appTextStyle(
-                                p,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: foreground,
-                              ),
-                            ),
-                            const SizedBox(height: 7),
-                            SizedBox(
-                              height: 12,
-                              child: AnimatedSwitcher(
-                                duration: _motion,
-                                child: done
-                                    ? Icon(
-                                        Icons.check_rounded,
-                                        key: const ValueKey('done'),
-                                        size: 13,
-                                        color: foreground,
-                                      )
-                                    : Center(
-                                        child: Container(
-                                          key: const ValueKey('dot'),
-                                          width: 4,
-                                          height: 4,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: task == null
-                                                ? Colors.transparent
-                                                : foreground,
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        );
-      },
     );
   }
 
@@ -1041,6 +834,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                 alignment: Alignment.topCenter,
                 child: expanded
                     ? Padding(
+                        key: ValueKey('training-week-details-${task.date}'),
                         padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,

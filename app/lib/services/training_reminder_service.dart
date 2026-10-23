@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'adaptive_training_service.dart';
+import 'diagnostics.dart';
 import 'marathon_training_service.dart' show TrainingTask;
 
 class TrainingReminderException implements Exception {
@@ -137,6 +138,9 @@ class TrainingReminderService {
     try {
       await _applyNative(enabled, hour, minute, tasks);
     } on PlatformException catch (error) {
+      await Diagnostics.log(
+        'TRAINING_REMINDER code=${error.code} details=${error.details ?? 'none'}',
+      );
       throw TrainingReminderException(describePlatformError(error));
     } on MissingPluginException {
       throw const TrainingReminderException('当前安装包未包含训练提醒实现，请更新安装包');
@@ -213,11 +217,33 @@ class TrainingReminderService {
       case 'reminder_201':
         return '应用缺少代理提醒权限，请检查AGC开放能力及HAP签名Profile，手机通知开关不能解决（201）';
       case 'reminder_1700002':
-        return '系统提醒数量已达上限，请关闭旧训练提醒后重试（1700002）';
+        final counts = _quotaCounts(error.details);
+        return '系统未提供可用提醒配额（1700002）。$counts'
+            '未能启用新设置，请发送诊断日志排查；不会清理其他功能的提醒';
       case 'reminder_-1':
-        return '原提醒恢复失败，当前状态不确定，请关闭提醒后重新开启';
+        return '原提醒未能完整恢复，当前状态不确定，请发送诊断日志排查';
       default:
         return '系统提醒操作失败（${error.code}）：${error.message ?? '请稍后重试'}';
+    }
+  }
+
+  static String _quotaCounts(Object? details) {
+    if (details is! String || details.isEmpty) return '';
+    try {
+      final parsed = jsonDecode(details);
+      if (parsed is! Map<String, dynamic>) return '';
+      final visible = parsed['visible'];
+      final owned = parsed['owned'];
+      if (visible is! int ||
+          owned is! int ||
+          visible < 0 ||
+          owned < 0 ||
+          owned > visible) {
+        return '';
+      }
+      return '本应用可见$visible条，其中训练提醒$owned条。';
+    } on FormatException {
+      return '';
     }
   }
 

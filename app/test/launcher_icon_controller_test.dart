@@ -19,6 +19,9 @@ class FakeIcons extends LauncherIconService {
   @override
   Future<bool> isSupported() async => support;
   @override
+  Future<LauncherIconSupportState> diagnose() async =>
+      LauncherIconSupportState(support, support ? 'supported' : 'unknown');
+  @override
   Future<void> setIcon(String style) async {
     calls.add(style);
     active++;
@@ -237,6 +240,70 @@ void main() {
     expect(service.current, 'light');
     expect(service.maxActive, 1);
   });
+  test(
+    'detailed diagnostics distinguish packaging, device and resource failures',
+    () async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          LauncherIconService.channel,
+          null,
+        ),
+      );
+      final bridge = LauncherIconService();
+      for (final reason in [
+        'build_not_enabled',
+        'device_api_low',
+        'missing_icons',
+        'api_error',
+      ]) {
+        messenger.setMockMethodCallHandler(
+          LauncherIconService.channel,
+          (call) async => {
+            'supported': false,
+            'reason': reason,
+            'deviceApi': 26,
+            'nativeError': 17700311,
+          },
+        );
+        final state = await bridge.diagnose();
+        expect(state.supported, isFalse);
+        expect(state.reason, reason);
+        expect(state.deviceApi, 26);
+        expect(state.description, isNot(contains('当前平台或安装包暂不支持')));
+      }
+    },
+  );
+  test(
+    'old boolean bridge remains supported and missing bridge is distinct',
+    () async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(LauncherIconService.channel, (
+        call,
+      ) async {
+        if (call.method == 'getSupportDetails') throw MissingPluginException();
+        return true;
+      });
+      final bridge = LauncherIconService();
+      expect((await bridge.diagnose()).supported, isTrue);
+      messenger.setMockMethodCallHandler(LauncherIconService.channel, null);
+      expect((await bridge.diagnose()).reason, 'bridge_missing');
+    },
+  );
+  test(
+    'support can be rechecked without restart or changing saved choice',
+    () async {
+      service.support = false;
+      await controller.load();
+      expect(controller.supported, isFalse);
+      service.support = true;
+      await controller.refreshSupport();
+      expect(controller.supported, isTrue);
+      expect(controller.enabled, isFalse);
+    },
+  );
   test('native channel contract', () async {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;

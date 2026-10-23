@@ -175,7 +175,7 @@ class _StatsPageState extends State<StatsPage> {
                     20,
                     MediaQuery.of(context).padding.top + 8,
                     20,
-                    110,
+                    tabScrollBottomPadding(context),
                   ),
                   children: [
                     Column(

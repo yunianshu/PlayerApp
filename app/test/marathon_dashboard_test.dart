@@ -163,6 +163,14 @@ Future<void> reveal(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> returnToTop(WidgetTester tester) async {
+  final scrollable = find
+      .descendant(of: dashboardScroll, matching: find.byType(Scrollable))
+      .first;
+  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+  await tester.pumpAndSettle();
+}
+
 Future<void> screenshot(WidgetTester tester, String name) async {
   final path = Platform.environment['TRAINING_SCREENSHOT_DIR'];
   if (path == null) return;
@@ -183,6 +191,172 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('today session precedes full-month calendar on entry', (
+    tester,
+  ) async {
+    await pumpDashboard(tester, height: 1600);
+    final session = find.byKey(const ValueKey('training-primary-session'));
+    final navigation = find.byKey(
+      const ValueKey('training-schedule-navigation'),
+    );
+    expect(
+      find.byKey(const ValueKey('training-session-2026-10-26')),
+      findsOneWidget,
+    );
+    expect(
+      tester.getBottomLeft(session).dy,
+      lessThan(tester.getTopLeft(navigation).dy),
+    );
+    expect(tester.getTopLeft(session).dy, lessThan(400));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'today alone expands by default; collapse survives save and navigation',
+    (tester) async {
+      await pumpDashboard(tester);
+      final row = find.byKey(const ValueKey('training-week-row-2026-10-26'));
+      final details = find.byKey(
+        const ValueKey('training-week-details-2026-10-26'),
+      );
+      await reveal(tester, row);
+      expect(details, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('training-week-details-2026-10-27')),
+        findsNothing,
+      );
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(details, findsNothing);
+      final toggle = find.byKey(
+        const ValueKey('training-week-complete-2026-10-26'),
+      );
+      await reveal(tester, toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(
+        details,
+        findsNothing,
+        reason: 'Saving must not reapply the expansion default.',
+      );
+      await returnToTop(tester);
+      await reveal(tester, find.byKey(const ValueKey('training-month-next')));
+      await tester.tap(find.byKey(const ValueKey('training-month-next')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('training-day-2026-11-02')));
+      await tester.pumpAndSettle();
+      await returnToTop(tester);
+      await reveal(tester, find.byKey(const ValueKey('training-return-today')));
+      await tester.tap(find.byKey(const ValueKey('training-return-today')));
+      await tester.pumpAndSettle();
+      await reveal(tester, row);
+      expect(
+        details,
+        findsNothing,
+        reason: 'Returning to today must preserve manual collapse.',
+      );
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(
+        details,
+        findsOneWidget,
+        reason: 'Manual expansion must remain available.',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('offscreen month calendar initially shows the selected month', (
+    tester,
+  ) async {
+    final tasks = List.generate(84, (index) {
+      final date = DateTime(2026, 8, 3).add(Duration(days: index));
+      return TrainingTask(
+        date.toIso8601String().split('T').first,
+        'EASY',
+        '轻松跑',
+        5,
+        longNotes,
+      );
+    });
+    await pumpDashboard(
+      tester,
+      child: DashboardHarness(tasks: tasks, now: DateTime(2026, 10, 19)),
+      height: 600,
+    );
+    await reveal(tester, find.byKey(const ValueKey('training-calendar-month')));
+    expect(find.text('2026年10月').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'return today resets a browsed month without changing selected date',
+    (tester) async {
+      await pumpDashboard(tester);
+      await reveal(tester, find.byKey(const ValueKey('training-month-next')));
+      await tester.tap(find.byKey(const ValueKey('training-month-next')));
+      await tester.pumpAndSettle();
+      expect(find.text('2026年11月'), findsOneWidget);
+      await returnToTop(tester);
+      await reveal(tester, find.byKey(const ValueKey('training-return-today')));
+      await tester.tap(find.byKey(const ValueKey('training-return-today')));
+      await tester.pumpAndSettle();
+      await reveal(
+        tester,
+        find.byKey(const ValueKey('training-calendar-month')),
+      );
+      expect(find.text('2026年10月'), findsOneWidget);
+    },
+  );
+
+  testWidgets('today expansion initializes after asynchronous task arrival', (
+    tester,
+  ) async {
+    final tasks = ValueNotifier<List<TrainingTask>>([]);
+    addTearDown(tasks.dispose);
+    await pumpDashboard(
+      tester,
+      child: ValueListenableBuilder<List<TrainingTask>>(
+        valueListenable: tasks,
+        builder: (context, value, child) => DashboardHarness(tasks: value),
+      ),
+    );
+    expect(find.text('暂无训练任务，请先选择或导入训练计划。'), findsOneWidget);
+    tasks.value = sampleTasks;
+    await tester.pumpAndSettle();
+    await reveal(
+      tester,
+      find.byKey(const ValueKey('training-week-row-2026-10-26')),
+    );
+    expect(
+      find.byKey(const ValueKey('training-week-details-2026-10-26')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a plan without today does not expand another day as today', (
+    tester,
+  ) async {
+    await pumpDashboard(
+      tester,
+      child: DashboardHarness(now: DateTime(2026, 10, 25)),
+    );
+    expect(
+      find.byKey(const ValueKey('training-session-2026-10-26')),
+      findsOneWidget,
+    );
+    await reveal(
+      tester,
+      find.byKey(const ValueKey('training-week-row-2026-10-26')),
+    );
+    expect(
+      find.byKey(const ValueKey('training-week-details-2026-10-26')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'full daily text is visible without truncation; selection changes session',
     (tester) async {
@@ -193,10 +367,15 @@ void main() {
       expect(notes.data, longNotes);
       expect(notes.maxLines, isNull);
       expect(notes.overflow, isNull);
+      await reveal(
+        tester,
+        find.byKey(const ValueKey('training-day-2026-10-27')),
+      );
       await tester.tap(find.byKey(const ValueKey('training-day-2026-10-27')));
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.byType(AnimatedSwitcher), findsWidgets);
       await tester.pumpAndSettle();
+      await returnToTop(tester);
       expect(
         find.byKey(const ValueKey('training-session-2026-10-27')),
         findsOneWidget,
@@ -247,18 +426,24 @@ void main() {
     },
   );
 
-  testWidgets('week navigation and today reset select a real task', (
+  testWidgets('month navigation and today reset select a real task', (
     tester,
   ) async {
     await pumpDashboard(tester);
-    await tester.tap(find.text('第 2 周'));
+    await reveal(tester, find.byKey(const ValueKey('training-month-next')));
+    await tester.tap(find.byKey(const ValueKey('training-month-next')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('training-day-2026-11-02')));
+    await tester.pumpAndSettle();
+    await returnToTop(tester);
     expect(
       find.byKey(const ValueKey('training-session-2026-11-02')),
       findsOneWidget,
     );
+    await reveal(tester, find.byKey(const ValueKey('training-return-today')));
     await tester.tap(find.byKey(const ValueKey('training-return-today')));
     await tester.pumpAndSettle();
+    await returnToTop(tester);
     expect(
       find.byKey(const ValueKey('training-session-2026-10-26')),
       findsOneWidget,
@@ -375,13 +560,26 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await screenshot(tester, 'training-${mode.name}-details');
+      await returnToTop(tester);
+      await reveal(
+        tester,
+        find.byKey(const ValueKey('training-month-calendar')),
+      );
+      await screenshot(tester, 'training-${mode.name}-month');
       final toggle = find.byKey(
         const ValueKey('training-week-complete-2026-10-23'),
       );
       await reveal(tester, toggle);
+      await screenshot(tester, 'training-${mode.name}-today-expanded');
       await tester.tap(toggle);
       await tester.pumpAndSettle();
       await screenshot(tester, 'training-${mode.name}-checked-details');
+      await returnToTop(tester);
+      await reveal(
+        tester,
+        find.byKey(const ValueKey('training-month-calendar')),
+      );
+      await screenshot(tester, 'training-${mode.name}-month-checked');
       expect(tester.takeException(), isNull);
     });
   }

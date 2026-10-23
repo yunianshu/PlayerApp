@@ -175,3 +175,13 @@ python tool/ohos_build.py debug --launcher-icons
 - [华为升级与兼容指南：编译 SDK、目标 SDK 和最低兼容版本的关系](https://developer.huawei.com/consumer/en/doc/harmonyos-releases/upgrade-adaptation)
 - [OpenHarmony 官方 SDK 声明](https://github.com/openharmony/interface_sdk-js/blob/master/api/%40ohos.bundle.bundleManager.d.ts)
 - [OpenHarmony 官方备用图标配置说明](https://github.com/openharmony/docs/blob/master/zh-cn/application-dev/quick-start/app-configuration-file.md)
+
+### 每日训练提醒配额错误（1700002）排查
+
+- 每日训练保持一个有结束日期的日历重复提醒。API 20 及以上优先用 `updateReminder` 原位更新已确认属于训练的有效提醒，避免重复申请名额；旧系统走有限清理/替换路径。
+- 只识别本功能的分组、内容签名与保留通知 ID；旧版逐日提醒按原始日历类型、2000–2099 ID、标题和过期文案迁移。持久化系统提醒 ID 只是辅助信息，不能单独授权清理。不会调用 `cancelAllReminders`，不会删除未知提醒。
+- 操作完成后重新读取并核验训练提醒数量；失败时恢复可核验旧项。已显示在通知栏的提醒可能不能原位更新，如果没有额外名额，会保留旧提醒并明确报错，不盲目删除最后一条。
+- 1700002 不足以确认是本应用旧提醒还是系统整体配额。失败提示及“我的 → 诊断日志”中的 `TRAINING_REMINDER` 记录会包含本应用可见条目数、确认属于训练的条目数、API 版本及失败阶段，不记录提醒正文。需要结合实机日志判断，应用无法读取或清理其他应用的提醒。
+- 回归包括：配额已满时迁移旧版30条提醒、重复启用/更改时间、同 ID 的其他功能、更新/清理失败回滚、API12回退及没有可清理条目时明确失败。Node 模拟测试不是 ArkTS 编译或真机通知到达验证；HAP 仍需原生构建和真实设备测试。
+
+接口依据：[OpenHarmony reminderAgentManager 文档](https://github.com/openharmony/docs/blob/master/zh-cn/application-dev/reference/apis-backgroundtasks-kit/js-apis-reminderAgentManager.md)。`updateReminder` 从 API20 开始支持，要求有效且未在通知中心显示的提醒。

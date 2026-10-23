@@ -1,4 +1,11 @@
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { FlutterEngine, MethodChannel, MethodCall, MethodResult } from '@ohos/flutter_ohos';
+
+interface IconSupportDetails {
+  supported: boolean;
+  reason: string;
+  deviceApi: number;
+}
 
 /**
  * The current project targets HarmonyOS API 22 (compatible API 12).
@@ -12,7 +19,10 @@ export default class LauncherIconSupport {
       engine.dartExecutor.getBinaryMessenger(), 'runtrail/launcher_icon');
     channel.setMethodCallHandler({
       onMethodCall: (call: MethodCall, result: MethodResult) => {
-        if (call.method === 'getSupport') {
+        if (call.method === 'getSupportDetails') {
+          const details: IconSupportDetails = { supported: false, reason: 'build_not_enabled', deviceApi: deviceInfo.sdkApiVersion };
+          result.success(details);
+        } else if (call.method === 'getSupport') {
           result.success(false);
         } else if (call.method === 'setIcon') {
           result.error('UNSUPPORTED', '当前鸿蒙安装包暂不支持切换桌面图标', null);
