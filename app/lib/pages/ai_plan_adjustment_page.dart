@@ -469,8 +469,8 @@ class AiPlanAdjustmentPage extends StatelessWidget {
               child: ExpansionTile(
                 expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
                     ? AnimationStyle.noAnimation
-                    : const AnimationStyle(
-                        duration: Duration(milliseconds: 220),
+                    : AnimationStyle(
+                        duration: const Duration(milliseconds: 220),
                       ),
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: const EdgeInsets.only(bottom: 12),

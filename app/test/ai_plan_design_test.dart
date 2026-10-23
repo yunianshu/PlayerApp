@@ -93,7 +93,8 @@ void main() {
         scoped.colorScheme.primary,
         palette.isEditorial ? palette.textPrimary : palette.accent,
       );
-      expect(scoped.dialogTheme.backgroundColor, palette.surface);
+      // 对话框主题因鸿蒙 3.22 与 3.47 类名冲突暂未注入 ThemeData（见
+      // ai_plan_design.dart 注释），这里不再断言 dialogTheme。
       expect(
         scoped.dropdownMenuTheme.menuStyle!.backgroundColor!.resolve({}),
         palette.surface,

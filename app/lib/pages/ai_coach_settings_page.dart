@@ -428,7 +428,9 @@ class _AiCoachSettingsPageState extends State<AiCoachSettingsPage> {
                             key: ValueKey(
                               'ai-provider-${_legacy ? 'legacy' : _provider?.id}',
                             ),
-                            initialValue: _legacy ? 'legacy' : _provider?.id,
+// Flutter 3.22 fork 无 initialValue；value 在 3.47 弃用仍可用。
+                            // ignore: deprecated_member_use
+                                                        value: _legacy ? 'legacy' : _provider?.id,
                             isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'AI 平台',
@@ -481,7 +483,9 @@ class _AiCoachSettingsPageState extends State<AiCoachSettingsPage> {
                                   key: ValueKey(
                                     'ai-mode-${_provider!.id}-$_mode',
                                   ),
-                                  initialValue: _mode,
+// Flutter 3.22 fork 无 initialValue；value 在 3.47 弃用仍可用。
+                                  // ignore: deprecated_member_use
+                                                                    value: _mode,
                                   isExpanded: true,
                                   decoration: const InputDecoration(
                                     labelText: '接入类型',
@@ -601,7 +605,9 @@ class _AiCoachSettingsPageState extends State<AiCoachSettingsPage> {
                                       key: ValueKey(
                                         'ai-model-${_provider!.id}-${_models.join(',')}-$_model',
                                       ),
-                                      initialValue: _model,
+// Flutter 3.22 fork 无 initialValue；value 在 3.47 弃用仍可用。
+                                      // ignore: deprecated_member_use
+                                                                            value: _model,
                                       isExpanded: true,
                                       decoration: const InputDecoration(
                                         labelText: '模型',

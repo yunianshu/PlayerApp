@@ -405,7 +405,8 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
         : rest
         ? p.surface
         : Color.alphaBlend(
-            p.accent.withValues(alpha: p.isDark ? .09 : .055),
+            // ignore: deprecated_member_use
+            p.accent.withOpacity(p.isDark ? .09 : .055),
             p.surface,
           );
     final border = selected
@@ -414,7 +415,8 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
         ? p.accent
         : task == null
         ? p.stroke
-        : accent.withValues(alpha: .25);
+        // ignore: deprecated_member_use
+        : accent.withOpacity(.25);
     final pace = task?.easyPace;
     return Semantics(
       key: ValueKey('training-calendar-semantics-$date'),
