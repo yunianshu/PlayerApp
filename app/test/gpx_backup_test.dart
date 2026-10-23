@@ -37,7 +37,8 @@ void main() {
   tearDown(() => RunDatabase.instance.close());
 
   group('buildGpx（GPX 导出）', () {
-    final start = DateTime(2026, 9, 30, 8);
+    // 08:00 in UTC+8 is this exact instant, regardless of the CI machine zone.
+    final start = DateTime.utc(2026, 9, 30);
     final record = RunRecord(
       sessionId: 's1',
       start: start,

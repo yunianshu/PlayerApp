@@ -15,6 +15,10 @@
     {
       "name": "location_reason",
       "value": "用于记录跑步轨迹和里程"
+    },
+    {
+      "name": "reminder_reason",
+      "value": "用于按计划提醒当日训练任务"
     }
   ]
 }

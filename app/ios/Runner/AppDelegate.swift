@@ -1,5 +1,6 @@
 import AVFoundation
 import Flutter
+import Security
 import UIKit
 import UniformTypeIdentifiers
 
@@ -22,6 +23,7 @@ import UniformTypeIdentifiers
       .registrar(forPlugin: "RunTrailNative").messenger()
     registerTtsChannel(messenger)
     registerFilePickChannel(messenger)
+    AiCredentialsStore.register(messenger)
   }
 
   // MARK: - 语音播报（AVSpeechSynthesizer）
@@ -139,5 +141,91 @@ extension AppDelegate: UIDocumentPickerDelegate {
     guard let completion = pickCompletion else { return }
     pickCompletion = nil
     completion(nil)
+  }
+}
+
+// Kept in the existing source file so all Runner build configurations include it.
+// This bridge stores an opaque endpoint/key envelope, never UserDefaults or files.
+private final class AiCredentialsStore {
+  private static let maxCredentialBytes = 1024
+  private let queue = DispatchQueue(label: "runtrail.ai_credentials")
+
+  static func register(_ messenger: FlutterBinaryMessenger) {
+    let store = AiCredentialsStore()
+    let channel = FlutterMethodChannel(name: "runtrail/ai_credentials", binaryMessenger: messenger)
+    channel.setMethodCallHandler { call, result in
+      store.queue.async {
+        let reply: Any?
+        do {
+          reply = try store.handle(call)
+        } catch {
+          // Keychain errors/arguments are never logged, returned or persisted elsewhere.
+          reply = FlutterError(code: "secure_storage_unavailable",
+            message: "Secure credential storage is unavailable", details: nil)
+        }
+        DispatchQueue.main.async { result(reply) }
+      }
+    }
+  }
+
+  private func query() -> [String: Any] {
+    return [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: "com.runtrail.runtrail.ai_credentials.v1",
+      kSecAttrAccount as String: "credential",
+      kSecAttrSynchronizable as String: false,
+    ]
+  }
+
+  private func handle(_ call: FlutterMethodCall) throws -> Any? {
+    switch call.method {
+    case "read":
+      var request = query()
+      request[kSecReturnData as String] = true
+      request[kSecMatchLimit as String] = kSecMatchLimitOne
+      var item: CFTypeRef?
+      let status = SecItemCopyMatching(request as CFDictionary, &item)
+      if status == errSecItemNotFound { return nil }
+      guard status == errSecSuccess, let data = item as? Data,
+        !data.isEmpty, data.count <= Self.maxCredentialBytes,
+        let value = String(data: data, encoding: .utf8)
+      else { throw CredentialError.unavailable }
+      return value
+    case "write":
+      guard let arguments = call.arguments as? [String: Any],
+        let value = arguments["apiKey"] as? String,
+        let data = value.data(using: .utf8), !data.isEmpty,
+        data.count <= Self.maxCredentialBytes
+      else {
+        return FlutterError(code: "invalid_credentials", message: "Invalid credential data", details: nil)
+      }
+      let attributes: [String: Any] = [
+        kSecValueData as String: data,
+        kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+      ]
+      let status = SecItemUpdate(query() as CFDictionary, attributes as CFDictionary)
+      if status == errSecItemNotFound {
+        var request = query()
+        for (key, value) in attributes { request[key] = value }
+        guard SecItemAdd(request as CFDictionary, nil) == errSecSuccess else {
+          throw CredentialError.unavailable
+        }
+      } else if status != errSecSuccess {
+        throw CredentialError.unavailable
+      }
+      return nil
+    case "delete":
+      let status = SecItemDelete(query() as CFDictionary)
+      guard status == errSecSuccess || status == errSecItemNotFound else {
+        throw CredentialError.unavailable
+      }
+      return nil
+    default:
+      return FlutterMethodNotImplemented
+    }
+  }
+
+  private enum CredentialError: Error {
+    case unavailable
   }
 }

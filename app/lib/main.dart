@@ -5,12 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
-import 'package:video_player/video_player.dart';
 
 import 'core/i18n.dart';
 import 'core/prefs.dart';
 import 'core/theme.dart';
 import 'core/theme_controller.dart';
+import 'core/launcher_icon_controller.dart';
 import 'pages/countdown_page.dart';
 import 'pages/course_page.dart';
 import 'pages/courses_page.dart';
@@ -26,6 +26,8 @@ import 'services/courses.dart';
 import 'services/diagnostics.dart';
 import 'services/tts_service.dart';
 import 'widgets/splash_gate.dart';
+import 'widgets/app_toast.dart';
+import 'widgets/run_start_confirmation.dart';
 
 Future<void> main() async {
   await runZonedGuarded<Future<void>>(
@@ -36,17 +38,16 @@ Future<void> main() async {
       unawaited(Diagnostics.logStartup());
       final themeController = ThemeController();
       final localeController = LocaleController.instance;
-      // runApp 前只等待首帧必需的主题/语言；品牌动画的预初始化与 runApp
-      // 并行——SplashGate 在视频就绪前盖白底（与原生启动窗口同色），
-      // 就绪后播放。冷启动视频初始化偏慢时也不会丢动画或白等。
-      final splashFuture = _preloadSplashVideo();
-      await Future.wait([themeController.load(), localeController.load()]);
-      runApp(
-        RunTrailApp(
-          themeController: themeController,
-          splashFuture: splashFuture,
+      // 在首帧前恢复保存的主题和语言；过场与首页共用同一调色板。
+      // 偏好通道异常或无响应也必须继续启动，不能无限停在原生启动页。
+      await Future.wait([
+        themeController.load(),
+        localeController.load().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () {},
         ),
-      );
+      ]);
+      runApp(RunTrailApp(themeController: themeController, showSplash: true));
     },
     (error, stack) {
       // runZonedGuarded 兜底：Diagnostics.install 已接管 PlatformDispatcher，
@@ -56,36 +57,16 @@ Future<void> main() async {
   );
 }
 
-/// 预初始化启动动画控制器（与 runApp 并行），失败返回 null：
-/// 品牌动画是锦上添花，任何异常都不能拖垮启动。
-Future<VideoPlayerController?> _preloadSplashVideo() async {
-  final controller = VideoPlayerController.asset('assets/splash.mp4');
-  try {
-    // 测试环境等场景平台通道可能永不返回，必须带超时。
-    // 不阻塞 runApp（期间盖白底），可以放宽些，冷启动也能播上动画。
-    await controller.initialize().timeout(const Duration(milliseconds: 3500));
-    await controller.setVolume(0);
-    return controller;
-  } on Object {
-    try {
-      await controller.dispose();
-    } on Object {
-      // dispose 过程自身也可能抛错（如超时后仍在初始化）：吞掉，不影响启动。
-    }
-    return null;
-  }
-}
-
 class RunTrailApp extends StatelessWidget {
   final ThemeController themeController;
 
-  /// main 启动的动画预初始化 Future；完成值 null 表示失败，跳过动画。
-  final Future<VideoPlayerController?>? splashFuture;
+  /// 正常冷启动播放一次；组件/页面测试和嵌入场景默认不播放。
+  final bool showSplash;
 
   const RunTrailApp({
     super.key,
     required this.themeController,
-    this.splashFuture,
+    this.showSplash = false,
   });
 
   @override
@@ -94,6 +75,10 @@ class RunTrailApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => RunTracker()),
         ChangeNotifierProvider.value(value: themeController),
+        ChangeNotifierProvider(
+          lazy: false,
+          create: (_) => LauncherIconController(themeController)..load(),
+        ),
         ChangeNotifierProvider.value(value: LocaleController.instance),
       ],
       child: Builder(
@@ -126,12 +111,8 @@ class RunTrailApp extends StatelessWidget {
                 debugShowCheckedModeBanner: false,
                 // ThemeController 已解析 auto/时间逻辑，直接给出目标风格。
                 theme: buildTheme(tc.effectiveStyle),
-                // 启动时全屏播放品牌动画，播完进入主界面；就绪前盖白底
-                // （原生启动窗口同色），失败/超时则直接进主界面。
-                home: SplashGate(
-                  controllerFuture: splashFuture,
-                  child: const HomeShell(),
-                ),
+                // 启动动画跟随已保存主题；首页同时预热且不因过场移除重建。
+                home: SplashGate(enabled: showSplash, child: const HomeShell()),
               ),
             ),
           );
@@ -204,7 +185,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onAvatarTap: () => setState(() => _index = 3),
       // 历史 tab 已让位给课程；全部记录从首页"全部"以路由进入。
       onSeeAllTap: () =>
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HistoryPage())),
+          Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => const HistoryPage())),
     ),
     const CoursesPage(),
     const StatsPage(),
@@ -215,16 +197,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (_starting) return;
     setState(() => _starting = true);
     final tracker = context.read<RunTracker>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final draft = await RunDraft.load();
       if (!mounted) return;
       if (draft != null && draft.recoverable) {
         setState(() => _index = 0);
         AppData.instance.bump();
-        messenger.showSnackBar(
-          SnackBar(content: Text('请先保存或放弃首页的未完成记录，再开始新跑步'.tr)),
-        );
+        showAppToast(context, '请先保存或放弃首页的未完成记录，再开始新跑步'.tr);
         return;
       }
       if (!await tracker.ensurePermission()) {
@@ -238,9 +217,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             context: context,
             builder: (ctx) => AlertDialog(
               title: Text('需要定位权限'.tr),
-              content: Text(
-                '记录跑步轨迹需要定位权限，请在系统设置中允许"使用期间"访问位置。'.tr,
-              ),
+              content: Text('记录跑步轨迹需要定位权限，请在系统设置中允许"使用期间"访问位置。'.tr),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
@@ -256,47 +233,24 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           if (go == true) unawaited(Geolocator.openAppSettings());
           return;
         }
-        messenger.showSnackBar(SnackBar(content: Text('需要定位权限才能记录跑步轨迹'.tr)));
+        showAppToast(context, '需要定位权限才能记录跑步轨迹'.tr);
         return;
       }
       if (!await tracker.isServiceEnabled()) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('定位服务未开启，请在系统设置中打开定位'.tr)),
-        );
+        if (!mounted) return;
+        showAppToast(context, '定位服务未开启，请在系统设置中打开定位'.tr);
         return;
       }
       if (!mounted) return;
-      // 跑前协助：询问是否先做热身（降低岔气与拉伤风险）。
-      final warmup = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('跑前热身？'.tr),
-          content: Text(
-            LocaleController.instance.isEnglish
-                ? 'Wake up joints and muscles first, about '
-                      ' ${warmupCourse.total.inMinutes} min'
-                : '先活动关节、唤醒肌肉，约${warmupCourse.total.inMinutes}分钟',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'skip'),
-              child: Text('直接开跑'.tr),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, 'warmup'),
-              child: Text('开始热身'.tr),
-            ),
-          ],
-        ),
-      );
+      // 首次提示热身，明确选择后持久保存；取消不算已提醒。
+      final choice = await showRunStartConfirmation(context);
       if (!mounted) return;
-      if (warmup == 'warmup') {
+      if (choice == RunStartChoice.warmup) {
         // 中途放弃热身视为取消本次开跑；完成热身进入倒计时。
-        final done = await Navigator.of(context).push<bool>(
-          CoursePage.route(warmupCourse, '热身完成！'),
-        );
+        final done = await Navigator.of(context)
+            .push<bool>(CoursePage.route(warmupCourse, '热身完成！'));
         if (done != true || !mounted) return;
-      } else if (warmup != 'skip') {
+      } else if (choice != RunStartChoice.run) {
         // 对话框被系统返回关闭：不开始跑步。
         return;
       }
@@ -315,17 +269,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       final started = await tracker.start();
       if (!started || !mounted) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('无法开始跑步：定位不可用'.tr)));
+          showAppToast(context, '无法开始跑步：定位不可用'.tr);
         }
         return;
       }
       await Navigator.of(context).push(RunningPage.route());
     } catch (_) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('无法开始跑步，请检查定位与存储后重试'.tr)),
-        );
+        showAppToast(context, '无法开始跑步，请检查定位与存储后重试'.tr);
       }
     } finally {
       if (mounted) setState(() => _starting = false);
@@ -390,7 +341,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             child: _tab(Icons.cottage_outlined, Icons.cottage, '首页'.tr, 0),
           ),
           Expanded(
-            child: _tab(Icons.play_circle_outline, Icons.play_circle, '课程'.tr, 1),
+            child: _tab(
+              Icons.play_circle_outline,
+              Icons.play_circle,
+              '课程'.tr,
+              1,
+            ),
           ),
           _startButton(c),
           Expanded(

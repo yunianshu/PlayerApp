@@ -11,6 +11,12 @@ const ScrollPhysics dampedPhysics = BouncingScrollPhysics(
   decelerationRate: ScrollDecelerationRate.fast,
 );
 
+/// Tab 页需在自己的 Scaffold / SafeArea 外调用：HomeShell 的 extendBody
+/// 会把实际底栏高度（含外边距和设备安全区）写入这里的 padding.bottom。
+/// 不再猜测一个固定高度；独立路由下则只避让系统安全区。
+double tabScrollBottomPadding(BuildContext context) =>
+    MediaQuery.paddingOf(context).bottom + 24;
+
 /// 页面背景容器：白天主题套纵向微渐变，其余主题纯色透明。
 class Backdrop extends StatelessWidget {
   final Widget child;
@@ -385,7 +391,9 @@ class GhostButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.md),
               side: BorderSide(color: c.stroke),
             )
-          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.md),
@@ -447,12 +455,7 @@ class CircleBtn extends StatelessWidget {
 /// 呼吸脉冲图标：等待类状态（GPS 搜索等）的动画反馈，
 /// 借鉴 Keep 的 rt_home_gps_searching 交互（原生实现，不使用其素材）。
 class PulsingIcon extends StatefulWidget {
-  const PulsingIcon(
-    this.icon, {
-    super.key,
-    this.size = 12,
-    this.color,
-  });
+  const PulsingIcon(this.icon, {super.key, this.size = 12, this.color});
 
   final IconData icon;
   final double size;
@@ -478,9 +481,10 @@ class _PulsingIconState extends State<PulsingIcon>
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.45, end: 1).animate(
-        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-      ),
+      opacity: Tween<double>(
+        begin: 0.45,
+        end: 1,
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
       child: ScaleTransition(
         scale: Tween<double>(begin: 1, end: 1.25).animate(
           CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
@@ -581,7 +585,8 @@ class _ConfettiPainter extends CustomPainter {
       final progress = Curves.easeOut.transform(local.clamp(0, 1));
       final fade = (1 - local).clamp(0.0, 1.0);
       final x = (p.startX + p.drift * progress) * size.width;
-      final y = size.height * 0.15 * p.speed * (1 - progress) +
+      final y =
+          size.height * 0.15 * p.speed * (1 - progress) +
           size.height * 0.8 * progress * progress * p.speed;
       final paint = Paint()..color = scaleAlpha(_colors[p.colorIndex], fade);
       canvas.save();

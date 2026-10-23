@@ -100,6 +100,76 @@ def stage_project(app: Path, config: dict) -> Path:
     return stage
 
 
+def verify_launcher_icon_sdk(config: dict) -> None:
+    """Fail closed unless the selected installed SDK and packaging schema know the feature.
+
+    targetSdkVersion is NOT the compile SDK: current DevEco supplies the latter.
+    Checking declarations avoids assuming a marketing OS version implies support.
+    """
+    deveco = Path(config["deveco_home"])
+    # DevEco and its matching CLI use sdk/default as their active bundled SDK.
+    # Do not accept a newer, inactive SDK merely because another version is installed.
+    sdk = deveco / "sdk" / "default"
+    signatures = (r"function\s+setAlternateIcon\s*\(", r"function\s+getAlternateIcons\s*\(")
+    declarations = list(sdk.rglob("@ohos.bundle.bundleManager.d.ts")) if sdk.is_dir() else []
+    known_api = any(all(re.search(pattern, path.read_text(encoding="utf-8-sig"))
+                        for pattern in signatures) for path in declarations)
+    if not known_api:
+        raise RuntimeError("--launcher-icons requires the selected DevEco SDK with public "
+                           "setAlternateIcon/getAlternateIcons (API 26.0.0+). "
+                           "Install/select a matching DevEco/Command Line Tools SDK; "
+                           "the normal build remains unchanged.")
+    # Schemas may be bundled with the SDK or Hvigor plugin depending on tool release.
+    schemas = []
+    for root in (sdk, deveco / "tools" / "hvigor"):
+        if root.is_dir():
+            schemas.extend(path for path in root.rglob("*.json*")
+                           if path.is_file() and path.stat().st_size <= 2_000_000
+                           and ("schema" in str(path).lower() or "app" in path.name.lower()))
+    def declares_alternate_icons(path: Path) -> bool:
+        try:
+            return '"alternateIcons"' in path.read_text(encoding="utf-8-sig")
+        except (UnicodeError, OSError):
+            return False
+    known_schema = any(declares_alternate_icons(path) for path in schemas)
+    if not known_schema:
+        raise RuntimeError("The selected SDK/Hvigor app schema does not declare alternateIcons. "
+                           "Use matching API 26.0.0+ DevEco and command-line tools; "
+                           "do not inject the field into an older packaging toolchain.")
+
+
+def prepare_launcher_icons(stage: Path) -> None:
+    """Apply experimental API26 integration only to the disposable build workspace."""
+    overlay = stage / "tool/launcher_icons_api26"
+    source = overlay / "LauncherIconSupport.ets"
+    if not source.is_file():
+        raise RuntimeError("Launcher icon API26 overlay is missing")
+    app_file = stage / "ohos/AppScope/app.json5"
+    # This repository's app.json5 is strict JSON. Fail rather than rewrite unknown JSON5.
+    data = json.loads(app_file.read_text(encoding="utf-8-sig"))
+    app_config = data["app"]
+    if app_config.get("bundleType", "app") != "app":
+        raise RuntimeError("alternateIcons is supported only for bundleType app")
+    if app_config.get("alternateIcons"):
+        raise RuntimeError("Existing alternateIcons need review before applying this overlay")
+    styles = ("light", "dark", "editorial")
+    app_config["alternateIcons"] = [
+        {"name": "runtrail_" + style, "icon": "$media:launcher_" + style}
+        for style in styles]
+    target = stage / "ohos/entry/src/main/ets/appearance/LauncherIconSupport.ets"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    media = stage / "ohos/AppScope/resources/base/media"
+    media.mkdir(parents=True, exist_ok=True)
+    for style in styles:
+        shutil.copy2(overlay / "media" / ("launcher_" + style + ".svg"), media)
+    write_text(app_file, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    # Keep target/compatible versions, signing, identifiers and production defaults intact.
+    write_text(stage / "LAUNCHER_ICONS_EXPERIMENTAL.txt",
+               "API26 launcher-icons trial. Native compiler/device validation required.\n"
+               "Compile with the selected API26 SDK; target/compatible versions unchanged.\n")
+
+
 def run(command: list[str], cwd: Path, env: dict) -> None:
     subprocess.run(command, cwd=cwd, env=env, check=True)
 
@@ -137,8 +207,10 @@ def prepare_compatibility(stage: Path, config: dict) -> None:
 
 
 def build(app: Path, mode: str, config: dict, *, offline: bool = False,
-          prepare_only: bool = False, analyze: bool = False) -> Path:
+          prepare_only: bool = False, analyze: bool = False, launcher_icons: bool = False) -> Path:
     app = app.resolve()
+    if launcher_icons:
+        verify_launcher_icon_sdk(config)
     lock_dir = app / "build/.ohos-build-lock"
     lock_dir.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -147,6 +219,8 @@ def build(app: Path, mode: str, config: dict, *, offline: bool = False,
         raise RuntimeError("Another HarmonyOS build is active; do not build concurrently") from error
     try:
         stage = stage_project(app, config)
+        if launcher_icons:
+            prepare_launcher_icons(stage)
         env = os.environ.copy()
         env.update(PUB_CACHE=config["pub_cache"], DEVECO_HOME=config["deveco_home"],
                    DEVECO_SDK_HOME=str(Path(config["deveco_home"]) / "sdk"),
@@ -175,7 +249,7 @@ def build(app: Path, mode: str, config: dict, *, offline: bool = False,
                 artifacts = list((stage / "ohos/entry/build").rglob("*.hap"))
             if not artifacts:
                 raise RuntimeError("Build completed without a HAP artifact")
-            output = app / "build/ohos/hap"
+            output = app / ("build/ohos/launcher-icons-hap" if launcher_icons else "build/ohos/hap")
             output.mkdir(parents=True, exist_ok=True)
             for artifact in artifacts:
                 shutil.copy2(artifact, output / artifact.name)
@@ -190,12 +264,16 @@ def main() -> None:
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--analyze", action="store_true")
+    parser.add_argument("--launcher-icons", action="store_true",
+                        help="Experimental API26 alternate launcher icons; isolated overlay, matching SDK required")
     options = parser.parse_args()
     stage = build(APP, options.mode, load_config(), offline=options.offline,
-                  prepare_only=options.prepare_only, analyze=options.analyze)
+                  prepare_only=options.prepare_only, analyze=options.analyze,
+                  launcher_icons=options.launcher_icons)
     print(f"HarmonyOS workspace: {stage}")
     if not options.prepare_only:
-        print(f"HAP output: {APP / 'build/ohos/hap'}")
+        output = APP / ("build/ohos/launcher-icons-hap" if options.launcher_icons else "build/ohos/hap")
+        print(f"HAP output: {output}")
 
 
 if __name__ == "__main__":

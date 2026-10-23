@@ -51,6 +51,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        LauncherIconManager.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
+        AiCredentialsStore.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
         // 跑步保活通道：启动/停止前台服务（见 TrackingForegroundService）。
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "runtrail/background")
             .setMethodCallHandler { call, result ->
@@ -86,6 +88,23 @@ class MainActivity : FlutterActivity() {
                             TrackingForegroundService.update(this, text)
                         }
                         result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "runtrail/training_reminders")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "replace" -> {
+                        val entries = call.argument<List<Map<String, Any?>>>("entries") ?: emptyList()
+                        TrainingAlarms.replace(this, entries)
+                        ensureNotificationPermission()
+                        result.success(true)
+                    }
+                    "cancel" -> {
+                        TrainingAlarms.cancel(this)
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }

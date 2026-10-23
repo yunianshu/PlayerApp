@@ -14,11 +14,14 @@ import '../widgets/badges_card.dart';
 import '../widgets/goal_dialog.dart';
 import '../widgets/load_error_page.dart';
 import '../widgets/settings_sheets.dart';
+import '../widgets/app_toast.dart';
+import 'ai_coach_settings_page.dart';
 
 import '../core/i18n.dart';
 import '../core/prefs.dart';
 import '../core/theme.dart';
 import '../core/theme_controller.dart';
+import '../core/launcher_icon_controller.dart';
 import '../data/database.dart';
 import '../models/run_record.dart';
 import '../services/app_data.dart';
@@ -83,8 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _exportCsv() async {
     if (_all.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('还没有跑步记录可以导出'.tr)));
+      showAppToast(context, '还没有跑步记录可以导出'.tr);
       return;
     }
     final buf = StringBuffer(
@@ -110,8 +112,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await ShareService.file(file.path, subject: 'RunTrail 跑步记录');
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('导出失败，请重试'.tr)));
+      showAppToast(context, '导出失败，请重试'.tr);
     }
   }
 
@@ -124,12 +125,10 @@ class _ProfilePageState extends State<ProfilePage> {
       await file.writeAsString(json, flush: true);
       await ShareService.file(file.path, subject: 'RunTrail 备份');
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('备份已生成，选择保存位置'.tr)));
+      showAppToast(context, '备份已生成，选择保存位置'.tr);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('备份失败，请重试'.tr)));
+      showAppToast(context, '备份失败，请重试'.tr);
     }
   }
 
@@ -137,8 +136,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final path = await FilePickService.pickJson();
     if (path == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('未选择文件或当前平台不支持文件选择'.tr)));
+      showAppToast(context, '未选择文件或当前平台不支持文件选择'.tr);
       return;
     }
     try {
@@ -146,23 +144,18 @@ class _ProfilePageState extends State<ProfilePage> {
       final result = await BackupService.restoreJson(json);
       AppData.instance.bump();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result.skipped > 0
-                ? '${'恢复完成'.tr} · ${result.imported} ${'条'.tr} · ${'跳过'.tr} ${result.skipped}'
-                : '${'恢复完成'.tr} · ${result.imported} ${'条'.tr}',
-          ),
-        ),
+      showAppToast(
+        context,
+        result.skipped > 0
+            ? '${'恢复完成'.tr} · ${result.imported} ${'条'.tr} · ${'跳过'.tr} ${result.skipped}'
+            : '${'恢复完成'.tr} · ${result.imported} ${'条'.tr}',
       );
     } on BackupFormatException {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('备份文件格式不正确'.tr)));
+      showAppToast(context, '备份文件格式不正确'.tr);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('恢复失败，请重试'.tr)));
+      showAppToast(context, '恢复失败，请重试'.tr);
     }
   }
 
@@ -172,8 +165,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final path = await FilePickService.pickJson();
     if (path == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('未选择文件或当前平台不支持文件选择'.tr)));
+      showAppToast(context, '未选择文件或当前平台不支持文件选择'.tr);
       return;
     }
     try {
@@ -181,27 +173,21 @@ class _ProfilePageState extends State<ProfilePage> {
       final outcome = await importRunFromGpx(xml);
       if (outcome.isDuplicate) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('这条 GPX 记录之前已导入过'.tr)));
+        showAppToast(context, '这条 GPX 记录之前已导入过'.tr);
         return;
       }
       AppData.instance.bump();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${'GPX 导入完成'.tr} · ${(outcome.import.record.distanceKm).toStringAsFixed(2)} ${'公里'.tr}',
-          ),
-        ),
+      showAppToast(
+        context,
+        '${'GPX 导入完成'.tr} · ${(outcome.import.record.distanceKm).toStringAsFixed(2)} ${'公里'.tr}',
       );
     } on GpxFormatException {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('GPX 文件不正确或缺少时间信息'.tr)));
+      showAppToast(context, 'GPX 文件不正确或缺少时间信息'.tr);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('恢复失败，请重试'.tr)));
+      showAppToast(context, '恢复失败，请重试'.tr);
     }
   }
 
@@ -243,8 +229,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() => _autoPause = v);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+      showAppToast(context, '保存失败，请重试'.tr);
     }
   }
 
@@ -255,8 +240,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() => _keepScreenOn = v);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+      showAppToast(context, '保存失败，请重试'.tr);
     }
   }
 
@@ -340,7 +324,7 @@ class _ProfilePageState extends State<ProfilePage> {
           style: TextStyle(fontSize: 17, color: c.textPrimary),
         ),
         content: Text(
-          'v${Diagnostics.appVersion} · 第二期\n\n纯本地跑步记录应用：GPS 轨迹、里程、配速、卡路里，支持语音播报、自动暂停、手动补录、个人纪录与数据备份；数据仅保存在本机，无需联网与账号。',
+          'v${Diagnostics.appVersion} · 第二期\n\n本地优先的跑步记录应用：GPS 轨迹、里程、配速、卡路里，支持语音播报、自动暂停、手动补录、个人纪录与数据备份；跑步数据保存在本机。AI 教练是可选联网功能，仅在你确认后将汇总信息发送至你配置的模型服务。',
           style: TextStyle(fontSize: 13, color: c.textSecondary, height: 1.6),
         ),
         actions: [
@@ -372,7 +356,7 @@ class _ProfilePageState extends State<ProfilePage> {
               20,
               MediaQuery.of(context).padding.top + 8,
               20,
-              110,
+              tabScrollBottomPadding(context),
             ),
             children: [
               _header(c),
@@ -761,10 +745,61 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           _row(
             c,
+            Icons.smart_toy_outlined,
+            'AI 服务设置',
+            'API Key / 模型',
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => const AiCoachSettingsPage()),
+            ),
+          ),
+          Divider(height: 1, color: c.divider),
+          _row(
+            c,
             Icons.brightness_6_outlined,
             '外观主题'.tr,
             themeLabel,
             onTap: _pickTheme,
+          ),
+          Divider(height: 1, color: c.divider),
+          Consumer<LauncherIconController>(
+            builder: (context, icons, _) => SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                '桌面图标跟随主题',
+                style: TextStyle(fontSize: 14, color: c.textPrimary),
+              ),
+              subtitle: Text(
+                !icons.loaded
+                    ? '正在检查支持情况…'
+                    : !icons.supported
+                    ? icons.supportState.description
+                    : icons.error ?? '桌面刷新可能稍有延迟；自动主题在应用运行或返回时同步',
+                style: TextStyle(fontSize: 11, color: c.textSecondary),
+              ),
+              secondary: !icons.supported && icons.loaded
+                  ? IconButton(
+                      tooltip: '重新检测桌面图标支持情况',
+                      icon: Icon(Icons.refresh, color: c.accent),
+                      onPressed: icons.busy ? null : icons.refreshSupport,
+                    )
+                  : null,
+              value: icons.supported && icons.enabled,
+              // Flutter 3.47 弃用 activeColor；鸿蒙 3.22 无 activeThumbColor。
+              // ignore: deprecated_member_use
+              activeColor: c.accent,
+              onChanged: !icons.loaded || !icons.supported || icons.busy
+                  ? null
+                  : (value) async {
+                      final ok = await icons.setEnabled(value);
+                      if (!context.mounted) return;
+                      showAppToast(
+                        context,
+                        ok
+                            ? (value ? '已开启桌面图标跟随主题' : '已恢复默认桌面图标')
+                            : '桌面图标设置失败，应用主题不受影响',
+                      );
+                    },
+            ),
           ),
           Divider(height: 1, color: c.divider),
           _row(
@@ -802,7 +837,13 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           _row(c, Icons.download_outlined, '数据导出'.tr, 'CSV', onTap: _exportCsv),
           Divider(height: 1, color: c.divider),
-          _row(c, Icons.upload_file_outlined, '从 GPX 导入'.tr, 'GPX', onTap: _importGpx),
+          _row(
+            c,
+            Icons.upload_file_outlined,
+            '从 GPX 导入'.tr,
+            'GPX',
+            onTap: _importGpx,
+          ),
           Divider(height: 1, color: c.divider),
           _row(c, Icons.ios_share, '备份数据'.tr, 'JSON', onTap: _backup),
           Divider(height: 1, color: c.divider),

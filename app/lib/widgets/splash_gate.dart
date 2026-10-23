@@ -1,144 +1,112 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 
-/// 启动过渡（品牌动画视频）：全屏静音播放一次后进入主界面。
-/// 控制器由 main 在 runApp 的同时开始预初始化，这里接收 Future——
-/// 就绪前盖一层白底（与原生启动窗口同色，视觉上仍是同一页），
-/// 主界面子树在底下持续预热；就绪后播放，播完/失败/超时进主界面。
+import '../core/theme.dart';
+import 'startup_animation.dart';
+
+/// 一次性的品牌过渡。直接使用已恢复的主题，不等待视频解码或平台通道。
+/// 首页始终保留在相同的 Stack 位置预热，动画结束不会重建首页状态。
 class SplashGate extends StatefulWidget {
-  const SplashGate({super.key, required this.child, this.controllerFuture});
+  const SplashGate({super.key, required this.child, this.enabled = true});
 
   final Widget child;
-
-  /// main 传入的预初始化结果；null（无 Future）表示完全跳过动画。
-  final Future<VideoPlayerController?>? controllerFuture;
+  final bool enabled;
 
   @override
   State<SplashGate> createState() => _SplashGateState();
 }
 
-class _SplashGateState extends State<SplashGate> {
+class _SplashGateState extends State<SplashGate>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  late final AnimationController _animation;
   Timer? _fallbackTimer;
-  bool _done = false; // 启动阶段结束，交还主界面
-  bool _released = false;
-  VideoPlayerController? _controller; // future 就绪后持有
+  bool _started = false;
+  bool _done = false;
 
   @override
   void initState() {
     super.initState();
-    final future = widget.controllerFuture;
-    if (future == null) {
+    _done = !widget.enabled;
+    _animation =
+        AnimationController(vsync: this, duration: const Duration(seconds: 2))
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) _finish();
+          });
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_done) return;
+    // 尊重系统“减少动态效果”，不播放、也不额外等待两秒。
+    if (MediaQuery.of(context).disableAnimations) {
+      _animation.stop();
+      _fallbackTimer?.cancel();
       _done = true;
       return;
     }
-    future.then(_onReady, onError: (_) => _onReady(null));
+    if (_started) return;
+    _started = true;
+    _fallbackTimer = Timer(const Duration(milliseconds: 2600), _finish);
+    _animation.forward();
   }
 
-  /// future 完成：null/未初始化 → 直接结束；否则开始播放。
-  void _onReady(VideoPlayerController? controller) {
-    if (!mounted) {
-      // 页面已卸载（极快热启动等场景）：资源立即释放。
-      controller?.dispose();
-      return;
-    }
-    if (controller == null || !controller.value.isInitialized) {
+  @override
+  void didUpdateWidget(SplashGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.enabled) _finish();
+    // 同一次启动期间切换主题或重建父节点，不重新播放。
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 后台返回不重播/继续过期的开场；初始化工作仍由首页自己管理。
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       _finish();
-      return;
     }
-    setState(() => _controller = controller);
-    // 兜底：视频卡住/回调丢失时，按视频时长加余量强制进主界面。
-    final duration = controller.value.duration;
-    final allowance = duration > Duration.zero
-        ? duration + const Duration(milliseconds: 600)
-        : const Duration(milliseconds: 3200);
-    _fallbackTimer = Timer(allowance, _finish);
-    controller.addListener(_onVideoTick);
-    unawaited(controller.play());
-  }
-
-  void _onVideoTick() {
-    final controller = _controller;
-    if (controller == null) return;
-    final v = controller.value;
-    // ohos 适配版 video_player(2.7) 无 isCompleted，用 position>=duration 判断；
-    // duration 为 0（元数据未就绪）时会瞬间误判播完，必须排除。
-    if (v.duration > Duration.zero && v.position >= v.duration) _finish();
   }
 
   void _finish() {
     _fallbackTimer?.cancel();
     _fallbackTimer = null;
-    _releaseController();
     if (!mounted || _done) return;
+    _animation.stop();
     setState(() => _done = true);
-  }
-
-  /// 播完/卸载时释放控制器，只释放一次。
-  void _releaseController() {
-    if (_released) return;
-    _released = true;
-    final controller = _controller;
-    _controller = null;
-    controller?.removeListener(_onVideoTick);
-    unawaited(controller?.dispose());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _fallbackTimer?.cancel();
-    _releaseController();
+    _animation.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
-    if (_done) return widget.child;
-    // 播完整体移除遮罩，交还主界面；视频首帧即白底，与原生启动页一致。
-    // 不用 AnimatedSwitcher：播放态在 build 内切换会让子树一帧内两换，
-    // 曾在 ohos 上触发 "RenderBox was not laid out"（子树画而未布局）。
     return Stack(
+      fit: StackFit.expand,
       children: [
-        widget.child,
-        Positioned.fill(
-          child: IgnorePointer(
-            // cover 不能用 FittedBox（无界约束 + ohos 裸 Texture = 无限尺寸），
-            // 用 LayoutBuilder 算出 cover 尺寸后以有界 SizedBox 撑满。
-            child: controller == null || !controller.value.isInitialized
-                ? const ColoredBox(color: Colors.white)
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      final size = controller.value.size;
-                      final ar = size.width / size.height;
-                      final double w, h;
-                      if (ar > constraints.maxWidth / constraints.maxHeight) {
-                        h = constraints.maxHeight;
-                        w = h * ar;
-                      } else {
-                        w = constraints.maxWidth;
-                        h = w / ar;
-                      }
-                      return ClipRect(
-                        child: OverflowBox(
-                          maxWidth: double.infinity,
-                          maxHeight: double.infinity,
-                          alignment: Alignment.center,
-                          child: SizedBox(
-                            width: w,
-                            height: h,
-                            child: AspectRatio(
-                              aspectRatio: ar,
-                              child: VideoPlayer(controller),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+        ExcludeSemantics(
+          excluding: !_done,
+          child: ExcludeFocus(
+            excluding: !_done,
+            child: AbsorbPointer(absorbing: !_done, child: widget.child),
           ),
         ),
+        if (!_done)
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _animation,
+              builder: (context, _) => StartupAnimationFrame(
+                palette: context.colors,
+                progress: _animation.value,
+              ),
+            ),
+          ),
       ],
     );
   }

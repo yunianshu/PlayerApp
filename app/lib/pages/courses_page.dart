@@ -28,7 +28,7 @@ class CoursesPage extends StatelessWidget {
               20,
               MediaQuery.of(context).padding.top + 8,
               20,
-              110,
+              tabScrollBottomPadding(context),
             ),
             children: [
               Column(
@@ -99,9 +99,8 @@ class CoursesPage extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadius.md),
-        onTap: () => Navigator.of(
-          context,
-        ).push(CoursePage.route(course, finishedTitle)),
+        onTap: () =>
+            Navigator.of(context).push(CoursePage.route(course, finishedTitle)),
         child: Row(
           children: [
             Container(
