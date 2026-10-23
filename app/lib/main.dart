@@ -27,6 +27,7 @@ import 'services/diagnostics.dart';
 import 'services/tts_service.dart';
 import 'widgets/splash_gate.dart';
 import 'widgets/app_toast.dart';
+import 'widgets/run_start_confirmation.dart';
 
 Future<void> main() async {
   await runZonedGuarded<Future<void>>(
@@ -184,7 +185,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       onAvatarTap: () => setState(() => _index = 3),
       // 历史 tab 已让位给课程；全部记录从首页"全部"以路由进入。
       onSeeAllTap: () =>
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HistoryPage())),
+          Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => const HistoryPage())),
     ),
     const CoursesPage(),
     const StatsPage(),
@@ -215,9 +217,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             context: context,
             builder: (ctx) => AlertDialog(
               title: Text('需要定位权限'.tr),
-              content: Text(
-                '记录跑步轨迹需要定位权限，请在系统设置中允许"使用期间"访问位置。'.tr,
-              ),
+              content: Text('记录跑步轨迹需要定位权限，请在系统设置中允许"使用期间"访问位置。'.tr),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
@@ -242,37 +242,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         return;
       }
       if (!mounted) return;
-      // 跑前协助：询问是否先做热身（降低岔气与拉伤风险）。
-      final warmup = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('跑前热身？'.tr),
-          content: Text(
-            LocaleController.instance.isEnglish
-                ? 'Wake up joints and muscles first, about '
-                      ' ${warmupCourse.total.inMinutes} min'
-                : '先活动关节、唤醒肌肉，约${warmupCourse.total.inMinutes}分钟',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, 'skip'),
-              child: Text('直接开跑'.tr),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, 'warmup'),
-              child: Text('开始热身'.tr),
-            ),
-          ],
-        ),
-      );
+      // 首次提示热身，明确选择后持久保存；取消不算已提醒。
+      final choice = await showRunStartConfirmation(context);
       if (!mounted) return;
-      if (warmup == 'warmup') {
+      if (choice == RunStartChoice.warmup) {
         // 中途放弃热身视为取消本次开跑；完成热身进入倒计时。
-        final done = await Navigator.of(context).push<bool>(
-          CoursePage.route(warmupCourse, '热身完成！'),
-        );
+        final done = await Navigator.of(context)
+            .push<bool>(CoursePage.route(warmupCourse, '热身完成！'));
         if (done != true || !mounted) return;
-      } else if (warmup != 'skip') {
+      } else if (choice != RunStartChoice.run) {
         // 对话框被系统返回关闭：不开始跑步。
         return;
       }
@@ -363,7 +341,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             child: _tab(Icons.cottage_outlined, Icons.cottage, '首页'.tr, 0),
           ),
           Expanded(
-            child: _tab(Icons.play_circle_outline, Icons.play_circle, '课程'.tr, 1),
+            child: _tab(
+              Icons.play_circle_outline,
+              Icons.play_circle,
+              '课程'.tr,
+              1,
+            ),
           ),
           _startButton(c),
           Expanded(

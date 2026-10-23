@@ -32,6 +32,10 @@ class LauncherIconController extends ChangeNotifier
   final LauncherIconPreferences preferences;
   bool loaded = false;
   bool supported = false;
+  LauncherIconSupportState supportState = const LauncherIconSupportState(
+    false,
+    'unknown',
+  );
   bool enabled = false;
   bool busy = false;
   String? error;
@@ -61,12 +65,20 @@ class LauncherIconController extends ChangeNotifier
     } on Object {
       enabled = false;
     }
-    supported = await service.isSupported();
+    supportState = await service.diagnose();
+    supported = supportState.supported;
     if (_disposed) return;
     _desiredEnabled = enabled;
     loaded = true;
     _notify();
     if (supported) await _sync();
+  }
+
+  Future<void> refreshSupport() async {
+    if (_disposed || busy || !loaded) return;
+    loaded = false;
+    _notify();
+    await load();
   }
 
   Future<bool> setEnabled(bool value) async {

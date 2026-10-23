@@ -2,6 +2,13 @@ import { FlutterEngine, MethodChannel, MethodCall, MethodResult } from '@ohos/fl
 import { bundleManager } from '@kit.AbilityKit';
 import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 
+interface IconSupportDetails {
+  supported: boolean;
+  reason: string;
+  deviceApi: number;
+  nativeError: number;
+}
+
 // This file is overlaid ONLY by --launcher-icons after SDK/schema checks.
 // It must never be compiled by the legacy SDK22 source build.
 export default class LauncherIconSupport {
@@ -13,8 +20,10 @@ export default class LauncherIconSupport {
       engine.dartExecutor.getBinaryMessenger(), 'runtrail/launcher_icon');
     channel.setMethodCallHandler({
       onMethodCall: (call: MethodCall, result: MethodResult) => {
-        if (call.method === 'getSupport') {
-          LauncherIconSupport.supported().then((value: boolean) => result.success(value));
+        if (call.method === 'getSupportDetails') {
+          LauncherIconSupport.details().then((value: IconSupportDetails) => result.success(value));
+        } else if (call.method === 'getSupport') {
+          LauncherIconSupport.details().then((value: IconSupportDetails) => result.success(value.supported));
         } else if (call.method === 'setIcon') {
           const style: string = call.argument('style') ?? '';
           LauncherIconSupport.setIcon(style, result);
@@ -30,15 +39,16 @@ export default class LauncherIconSupport {
       icons.some((icon: bundleManager.AlternateIconInfo) => icon.iconName === name && icon.iconId > 0));
   }
 
-  private static async supported(): Promise<boolean> {
-    // sdkApiVersion exists since API6; do not call an API26 version checker on API12.
-    if (deviceInfo.sdkApiVersion < 26) return false;
+  private static async details(): Promise<IconSupportDetails> {
+    const api: number = deviceInfo.sdkApiVersion;
+    if (api < 26) return { supported: false, reason: 'device_api_low', deviceApi: api, nativeError: 0 };
     try {
       const icons = await bundleManager.getAlternateIcons();
-      return LauncherIconSupport.configured(icons);
-    } catch (_) {
-      // Includes app clones and devices which cannot use alternate icons.
-      return false;
+      const supported: boolean = LauncherIconSupport.configured(icons);
+      return { supported: supported, reason: supported ? 'supported' : 'missing_icons', deviceApi: api, nativeError: 0 };
+    } catch (err) {
+      const failure = err as BusinessError;
+      return { supported: false, reason: 'api_error', deviceApi: api, nativeError: failure.code ?? -1 };
     }
   }
 

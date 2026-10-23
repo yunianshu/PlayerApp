@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import '../widgets/app_toast.dart';
+
 import 'package:provider/provider.dart';
 
 import '../core/i18n.dart';
@@ -194,7 +196,7 @@ class HomePageState extends State<HomePage> {
               20,
               MediaQuery.of(context).padding.top + 8,
               20,
-              110,
+              tabScrollBottomPadding(context),
             ),
             children: [
               _header(c),
@@ -223,24 +225,33 @@ class HomePageState extends State<HomePage> {
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const MarathonTrainingPage()),
-        ),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const MarathonTrainingPage())),
         child: Row(
           children: [
             Icon(Icons.calendar_month_outlined, color: c.accent),
             const SizedBox(width: 12),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('2027厦门马拉松训练计划',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
-                        color: c.textPrimary)),
-                const SizedBox(height: 4),
-                Text('查看每日训练、配速和完成情况',
-                    style: TextStyle(fontSize: 11, color: c.textSecondary)),
-              ],
-            )),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '2027厦门马拉松训练计划',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '查看每日训练、配速和完成情况',
+                    style: TextStyle(fontSize: 11, color: c.textSecondary),
+                  ),
+                ],
+              ),
+            ),
             Icon(Icons.chevron_right_rounded, color: c.textMuted),
           ],
         ),
@@ -371,8 +382,11 @@ class HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               if (editorial)
                 Text('WEEK · ${'本周里程'.tr}', style: kickerStyle(c, size: 11))
@@ -408,6 +422,7 @@ class HomePageState extends State<HomePage> {
                   border: editorial ? Border.all(color: c.stroke) : null,
                 ),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       Icons.gps_fixed,
