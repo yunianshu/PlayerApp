@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/app_toast.dart';
 
 import '../widgets/run_share_sheet.dart';
 
@@ -147,8 +148,7 @@ class _SummaryPageState extends State<SummaryPage> {
       await RunStorage.save(widget.record, widget.points);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+      showAppToast(context, '保存失败，请重试'.tr);
       return;
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -200,8 +200,7 @@ class _SummaryPageState extends State<SummaryPage> {
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('放弃失败，请重试'.tr)));
+        showAppToast(context, '放弃失败，请重试'.tr);
       }
     } finally {
       _discarding = false;

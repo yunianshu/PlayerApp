@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'widgets/app_toast.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
@@ -215,16 +216,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (_starting) return;
     setState(() => _starting = true);
     final tracker = context.read<RunTracker>();
-    final messenger = ScaffoldMessenger.of(context);
     try {
       final draft = await RunDraft.load();
       if (!mounted) return;
       if (draft != null && draft.recoverable) {
         setState(() => _index = 0);
         AppData.instance.bump();
-        messenger.showSnackBar(
-          SnackBar(content: Text('请先保存或放弃首页的未完成记录，再开始新跑步'.tr)),
-        );
+        showAppToast(context, '请先保存或放弃首页的未完成记录，再开始新跑步'.tr);
         return;
       }
       if (!await tracker.ensurePermission()) {
@@ -256,13 +254,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           if (go == true) unawaited(Geolocator.openAppSettings());
           return;
         }
-        messenger.showSnackBar(SnackBar(content: Text('需要定位权限才能记录跑步轨迹'.tr)));
+        showAppToast(context, '需要定位权限才能记录跑步轨迹'.tr);
         return;
       }
       if (!await tracker.isServiceEnabled()) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('定位服务未开启，请在系统设置中打开定位'.tr)),
-        );
+        if (!mounted) return;
+        showAppToast(context, '定位服务未开启，请在系统设置中打开定位'.tr);
         return;
       }
       if (!mounted) return;
@@ -315,17 +312,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       final started = await tracker.start();
       if (!started || !mounted) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('无法开始跑步：定位不可用'.tr)));
+          showAppToast(context, '无法开始跑步：定位不可用'.tr);
         }
         return;
       }
       await Navigator.of(context).push(RunningPage.route());
     } catch (_) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('无法开始跑步，请检查定位与存储后重试'.tr)),
-        );
+        showAppToast(context, '无法开始跑步，请检查定位与存储后重试'.tr);
       }
     } finally {
       if (mounted) setState(() => _starting = false);

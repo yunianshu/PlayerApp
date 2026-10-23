@@ -14,6 +14,8 @@ import '../widgets/badges_card.dart';
 import '../widgets/goal_dialog.dart';
 import '../widgets/load_error_page.dart';
 import '../widgets/settings_sheets.dart';
+import '../widgets/app_toast.dart';
+import 'ai_coach_settings_page.dart';
 
 import '../core/i18n.dart';
 import '../core/prefs.dart';
@@ -83,8 +85,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _exportCsv() async {
     if (_all.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('还没有跑步记录可以导出'.tr)));
+      showAppToast(context, '还没有跑步记录可以导出'.tr);
       return;
     }
     final buf = StringBuffer(
@@ -110,8 +111,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await ShareService.file(file.path, subject: 'RunTrail 跑步记录');
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('导出失败，请重试'.tr)));
+      showAppToast(context, '导出失败，请重试'.tr);
     }
   }
 
@@ -124,12 +124,10 @@ class _ProfilePageState extends State<ProfilePage> {
       await file.writeAsString(json, flush: true);
       await ShareService.file(file.path, subject: 'RunTrail 备份');
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('备份已生成，选择保存位置'.tr)));
+      showAppToast(context, '备份已生成，选择保存位置'.tr);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('备份失败，请重试'.tr)));
+      showAppToast(context, '备份失败，请重试'.tr);
     }
   }
 
@@ -137,8 +135,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final path = await FilePickService.pickJson();
     if (path == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('未选择文件或当前平台不支持文件选择'.tr)));
+      showAppToast(context, '未选择文件或当前平台不支持文件选择'.tr);
       return;
     }
     try {
@@ -146,23 +143,18 @@ class _ProfilePageState extends State<ProfilePage> {
       final result = await BackupService.restoreJson(json);
       AppData.instance.bump();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result.skipped > 0
-                ? '${'恢复完成'.tr} · ${result.imported} ${'条'.tr} · ${'跳过'.tr} ${result.skipped}'
-                : '${'恢复完成'.tr} · ${result.imported} ${'条'.tr}',
-          ),
-        ),
+      showAppToast(
+        context,
+        result.skipped > 0
+            ? '${'恢复完成'.tr} · ${result.imported} ${'条'.tr} · ${'跳过'.tr} ${result.skipped}'
+            : '${'恢复完成'.tr} · ${result.imported} ${'条'.tr}',
       );
     } on BackupFormatException {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('备份文件格式不正确'.tr)));
+      showAppToast(context, '备份文件格式不正确'.tr);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('恢复失败，请重试'.tr)));
+      showAppToast(context, '恢复失败，请重试'.tr);
     }
   }
 
@@ -172,8 +164,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final path = await FilePickService.pickJson();
     if (path == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('未选择文件或当前平台不支持文件选择'.tr)));
+      showAppToast(context, '未选择文件或当前平台不支持文件选择'.tr);
       return;
     }
     try {
@@ -181,27 +172,21 @@ class _ProfilePageState extends State<ProfilePage> {
       final outcome = await importRunFromGpx(xml);
       if (outcome.isDuplicate) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('这条 GPX 记录之前已导入过'.tr)));
+        showAppToast(context, '这条 GPX 记录之前已导入过'.tr);
         return;
       }
       AppData.instance.bump();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${'GPX 导入完成'.tr} · ${(outcome.import.record.distanceKm).toStringAsFixed(2)} ${'公里'.tr}',
-          ),
-        ),
+      showAppToast(
+        context,
+        '${'GPX 导入完成'.tr} · ${(outcome.import.record.distanceKm).toStringAsFixed(2)} ${'公里'.tr}',
       );
     } on GpxFormatException {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('GPX 文件不正确或缺少时间信息'.tr)));
+      showAppToast(context, 'GPX 文件不正确或缺少时间信息'.tr);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('恢复失败，请重试'.tr)));
+      showAppToast(context, '恢复失败，请重试'.tr);
     }
   }
 
@@ -243,8 +228,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() => _autoPause = v);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+      showAppToast(context, '保存失败，请重试'.tr);
     }
   }
 
@@ -255,8 +239,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() => _keepScreenOn = v);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('保存失败，请重试'.tr)));
+      showAppToast(context, '保存失败，请重试'.tr);
     }
   }
 
@@ -340,7 +323,7 @@ class _ProfilePageState extends State<ProfilePage> {
           style: TextStyle(fontSize: 17, color: c.textPrimary),
         ),
         content: Text(
-          'v${Diagnostics.appVersion} · 第二期\n\n纯本地跑步记录应用：GPS 轨迹、里程、配速、卡路里，支持语音播报、自动暂停、手动补录、个人纪录与数据备份；数据仅保存在本机，无需联网与账号。',
+          'v${Diagnostics.appVersion} · 第二期\n\n本地优先的跑步记录应用：GPS 轨迹、里程、配速、卡路里，支持语音播报、自动暂停、手动补录、个人纪录与数据备份；跑步数据保存在本机。AI 教练是可选联网功能，仅在你确认后将汇总信息发送至你配置的模型服务。',
           style: TextStyle(fontSize: 13, color: c.textSecondary, height: 1.6),
         ),
         actions: [
@@ -761,6 +744,16 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           _row(
             c,
+            Icons.smart_toy_outlined,
+            'AI 服务设置',
+            'API Key / 模型',
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => const AiCoachSettingsPage()),
+            ),
+          ),
+          Divider(height: 1, color: c.divider),
+          _row(
+            c,
             Icons.brightness_6_outlined,
             '外观主题'.tr,
             themeLabel,
@@ -802,7 +795,13 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           _row(c, Icons.download_outlined, '数据导出'.tr, 'CSV', onTap: _exportCsv),
           Divider(height: 1, color: c.divider),
-          _row(c, Icons.upload_file_outlined, '从 GPX 导入'.tr, 'GPX', onTap: _importGpx),
+          _row(
+            c,
+            Icons.upload_file_outlined,
+            '从 GPX 导入'.tr,
+            'GPX',
+            onTap: _importGpx,
+          ),
           Divider(height: 1, color: c.divider),
           _row(c, Icons.ios_share, '备份数据'.tr, 'JSON', onTap: _backup),
           Divider(height: 1, color: c.divider),
