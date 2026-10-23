@@ -777,7 +777,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 style: TextStyle(fontSize: 11, color: c.textSecondary),
               ),
               value: icons.supported && icons.enabled,
-              activeThumbColor: c.accent,
+              // Flutter 3.47 弃用 activeColor；鸿蒙 3.22 无 activeThumbColor。
+              // ignore: deprecated_member_use
+              activeColor: c.accent,
               onChanged: !icons.loaded || !icons.supported || icons.busy
                   ? null
                   : (value) async {
