@@ -1,7 +1,7 @@
 import { FlutterAbility, FlutterEngine, MethodChannel, MethodCall, MethodResult } from '@ohos/flutter_ohos';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { backgroundTaskManager, reminderAgentManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
 import notification from '@ohos.notification';
 import { wantAgent, WantAgent } from '@kit.AbilityKit';
@@ -82,6 +82,100 @@ export default class EntryAbility extends FlutterAbility {
         }
       }
     })
+    // 训练提醒通道：系统级日历提醒（应用被杀后仍由系统提醒代理触发）。
+    const reminderChannel = new MethodChannel(
+      flutterEngine.dartExecutor.getBinaryMessenger(), 'runtrail/training_reminders')
+    reminderChannel.setMethodCallHandler({
+      onMethodCall: (call: MethodCall, result: MethodResult) => {
+        if (call.method === 'replace') {
+          // 平行数组协议：entries 里是 Map，ArkTS 侧动态取值会踩 ESObject 限制，
+          // 改传三个全类型化数组按下标配对。
+          const ats: Array<number> = call.argument('at') ?? []
+          const titles: Array<string> = call.argument('title') ?? []
+          const bodies: Array<string> = call.argument('body') ?? []
+          this.replaceReminders(ats, titles, bodies, result)
+        } else if (call.method === 'cancel') {
+          this.cancelReminders(result)
+        } else if (call.method === 'publishNow') {
+          const title: string = call.argument('title') ?? ''
+          const body: string = call.argument('body') ?? ''
+          this.publishTodayNotification(title, body, result)
+        } else {
+          result.notImplemented()
+        }
+      }
+    })
+  }
+
+  /// 清空本应用全部待触发提醒。
+  private async cancelReminders(result: MethodResult): Promise<void> {
+    try {
+      await reminderAgentManager.cancelAllReminders()
+      result.success(true)
+    } catch (err) {
+      console.error(`reminders cancel failed: ${JSON.stringify(err)}`)
+      result.error('reminder_failed', 'cancel', JSON.stringify(err))
+    }
+  }
+
+  /// 整表替换训练提醒：先清空，再按条目逐个发布日历提醒。
+  private async replaceReminders(
+    ats: Array<number>, titles: Array<string>, bodies: Array<string>,
+    result: MethodResult): Promise<void> {
+    try {
+      await reminderAgentManager.cancelAllReminders()
+      let published = 0
+      for (let i = 0; i < ats.length; i++) {
+        const at = new Date(ats[i])
+        const req: reminderAgentManager.ReminderRequestCalendar = {
+          reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_CALENDAR,
+          dateTime: {
+            year: at.getFullYear(),
+            month: at.getMonth() + 1,
+            day: at.getDate(),
+            hour: at.getHours(),
+            minute: at.getMinutes(),
+            second: 0
+          },
+          title: i < titles.length ? titles[i] : '跑迹 · 训练提醒',
+          content: i < bodies.length ? bodies[i] : '',
+          notificationId: 2000 + i,
+          expiredContent: '训练提醒已过期'
+        }
+        await reminderAgentManager.publishReminder(req)
+        published++
+      }
+      console.info(`reminders replaced: ${published}`)
+      result.success(true)
+    } catch (err) {
+      console.error(`reminders replace failed: ${JSON.stringify(err)}`)
+      result.error('reminder_failed', 'replace', JSON.stringify(err))
+    }
+  }
+
+  /// 立即发一条本地通知（打开训练页时的当日任务兜底提醒，当天去重由 Dart 侧控制）。
+  private publishTodayNotification(title: string, body: string, result: MethodResult): void {
+    if (title.length === 0) {
+      result.success(null)
+      return
+    }
+    notificationManager.requestEnableNotification(this.context).catch(() => {})
+    notificationManager.publish({
+      id: 2001,
+      notificationSlotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
+      content: {
+        contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+        normal: {
+          title: title,
+          text: body,
+          additionalText: '跑迹 RunTrail'
+        }
+      }
+    }).then(() => result.success(true))
+      .catch((err: BusinessError) => {
+        console.error(`today notification publish failed: ${err.code} ${err.message}`)
+        result.success(false)
+      })
   }
 
   private initTts(lang: string, result: MethodResult): void {

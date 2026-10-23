@@ -36,9 +36,10 @@
     ],
     "requestPermissions": [
       {"name": "ohos.permission.LOCATION", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "inuse"}},
-      {"name": "ohos.permission.APPROXIMATELY_LOCATION", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "inuse"}},
+      {"name": "ohos.permission.APPROXIMATELY_LOCATION", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "always"}},
       {"name": "ohos.permission.LOCATION_IN_BACKGROUND", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "always"}},
-      {"name": "ohos.permission.KEEP_BACKGROUND_RUNNING", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "always"}}
+      {"name": "ohos.permission.KEEP_BACKGROUND_RUNNING", "reason": "$string:location_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "always"}},
+      {"name": "ohos.permission.PUBLISH_AGENT_REMINDER", "reason": "$string:reminder_reason", "usedScene": {"abilities": ["EntryAbility"], "when": "always"}}
     ]
   }
 }

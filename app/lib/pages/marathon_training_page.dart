@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/marathon_training_service.dart';
 import '../services/training_reminder_service.dart';
@@ -28,6 +30,8 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
   Future<void> _loadExtras() async {
     final enabled = await TrainingReminderService.enabled();
     final time = await TrainingReminderService.time();
+    // 提醒代理不可用的设备上，打开训练页时补发当日任务通知（每天至多一次）。
+    unawaited(TrainingReminderService.notifyTodayIfNeeded());
     final runs = await RunDatabase.instance.listRuns();
     final feedback = await TrainingFeedbackService.all();
     final km = <String, double>{};
@@ -274,7 +278,7 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
                     label: const Text('评估并调整未来7天'),
                   ),
                   SwitchListTile(
-                    title: const Text('每日训练系统提醒（Android）'),
+                    title: const Text('每日训练提醒'),
                     subtitle: Text('提醒时间：${_hour.toString().padLeft(2, '0')}:${_minute.toString().padLeft(2, '0')}'),
                     value: _reminderEnabled,
                     onChanged: (v) => _changeReminder(v, _hour, _minute),
@@ -283,37 +287,81 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
                 );
               }
               final t = tasks[index - 1], isToday = t.date == today;
+              final done = _done.contains(t.date);
+              final recorded = _runsByDate[t.date];
+              // 详情拼成单行展示：行数不固定会让列表子项高度参差。
+              final detail = [
+                if (recorded != null)
+                  '已记录 ${recorded.toStringAsFixed(2)} km（待确认完成）',
+                if (t.isRun)
+                  '${t.km.toStringAsFixed(t.km == t.km.roundToDouble() ? 0 : 1)} km'
+                else
+                  '恢复/力量',
+                if (t.easyPace != null)
+                  '${_pace(t.easyPace)}–${_pace(t.slowPace)}/km',
+                if (t.notes.isNotEmpty) t.notes,
+              ].join(' · ');
               return Card(
-                child: CheckboxListTile(
-                  value: _done.contains(t.date),
-                  title: Text('${t.date}  ${t.title}${isToday ? " · 今天" : ""}'),
-                  subtitle: Text(
-                    '${_runsByDate[t.date] == null ? "" : "当日已记录 ${_runsByDate[t.date]!.toStringAsFixed(2)} km（待确认完成）\\n"}'
-                    '${t.isRun ? "${t.km.toStringAsFixed(0)} km" : "恢复/力量"}'
-                    '${t.easyPace == null ? "" : " · ${_pace(t.easyPace)}–${_pace(t.slowPace)}/km"}\n${t.notes}',
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                color: isToday ? Theme.of(context).colorScheme.secondaryContainer : null,
+                child: SizedBox(
+                  // 统一子项高度：所有行等高，信息超出一行时省略。
+                  height: 72,
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: done,
+                        onChanged: (v) async {
+                          try {
+                            await MarathonTrainingService.setComplete(t.date, v ?? false);
+                            if (mounted) {
+                              setState(() {
+                                if (v == true) { _done.add(t.date); } else { _done.remove(t.date); }
+                              });
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('保存失败：$e')));
+                            }
+                          }
+                        },
+                      ),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${t.date.substring(5)}  ${t.title}${isToday ? ' · 今天' : ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: isToday || done ? FontWeight.w600 : FontWeight.w500,
+                                decoration: done ? TextDecoration.lineThrough : null,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              detail,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '记录疼痛和疲劳',
+                        icon: Icon(_feedback.containsKey(t.date)
+                            ? Icons.health_and_safety : Icons.monitor_heart_outlined),
+                        onPressed: () => _recordFeedback(t),
+                      ),
+                    ],
                   ),
-                  isThreeLine: true,
-                  secondary: IconButton(
-                    tooltip: '记录疼痛和疲劳',
-                    icon: Icon(_feedback.containsKey(t.date)
-                        ? Icons.health_and_safety : Icons.monitor_heart_outlined),
-                    onPressed: () => _recordFeedback(t),
-                  ),
-                  onChanged: (v) async {
-                    try {
-                      await MarathonTrainingService.setComplete(t.date, v ?? false);
-                      if (mounted) {
-                        setState(() {
-                          if (v == true) { _done.add(t.date); } else { _done.remove(t.date); }
-                        });
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('保存失败：$e')));
-                      }
-                    }
-                  },
                 ),
               );
             },
