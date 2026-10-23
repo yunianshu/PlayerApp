@@ -60,7 +60,7 @@ export default class AiCredentialsStore {
       if ((error as BusinessError).code === ASSET_NOT_FOUND) {
         return null;
       }
-      throw error;
+      throw error as Error;
     }
     // A successful but malformed response is not treated as a missing key.
     if (rows.length !== 1) {
@@ -102,7 +102,7 @@ export default class AiCredentialsStore {
       await this.backend.remove(this.aliasQuery());
     } catch (error) {
       if ((error as BusinessError).code !== ASSET_NOT_FOUND) {
-        throw error;
+        throw error as Error;
       }
     }
   }
