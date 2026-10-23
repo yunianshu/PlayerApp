@@ -79,7 +79,7 @@ class PlanDesign {
       inversePrimary: p.onInverseAccent,
       surfaceTint: Colors.transparent,
     );
-    final input = InputDecorationThemeData(
+    final input = InputDecorationTheme(
       filled: true,
       fillColor: p.surface2,
       labelStyle: appTextStyle(p, color: p.textSecondary),
@@ -125,7 +125,7 @@ class PlanDesign {
         fontFamily: p.isEditorial ? 'Noto Sans SC' : null,
       ),
       iconTheme: IconThemeData(color: p.textSecondary),
-      appBarTheme: AppBarThemeData(
+      appBarTheme: AppBarTheme(
         backgroundColor: p.bg,
         foregroundColor: p.textPrimary,
         surfaceTintColor: Colors.transparent,
@@ -149,19 +149,8 @@ class PlanDesign {
         surfaceTintColor: Colors.transparent,
         textStyle: appTextStyle(p),
       ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: p.surface,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        titleTextStyle: appTextStyle(
-          p,
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-        ),
-        contentTextStyle: appTextStyle(p, height: 1.5),
-      ),
+      // 对话框主题两端类名冲突（3.22=DialogTheme，3.47=DialogThemeData 且
+      // 互不兼容赋值），无法共用，暂以默认对话框样式换取双工具链可编译。
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: p.surface,
         surfaceTintColor: Colors.transparent,

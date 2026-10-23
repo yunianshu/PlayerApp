@@ -513,7 +513,9 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
     _field('plan-ten-km', '近期 10 km 用时 · 分钟（可选）', _tenKm, optional: true),
     DropdownButtonFormField<String>(
       key: const Key('plan-recovery'),
-      initialValue: _recovery,
+// Flutter 3.22 fork 无 initialValue；value 在 3.47 弃用仍可用。
+      // ignore: deprecated_member_use
+            value: _recovery,
       isExpanded: true,
       decoration: _decoration('当前恢复情况'),
       items: const [
@@ -545,9 +547,8 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
         return FilterChip(
           backgroundColor: _p.surface,
           selectedColor: Color.alphaBlend(
-            (_p.isEditorial ? _p.textPrimary : _p.accent).withValues(
-              alpha: .12,
-            ),
+            // ignore: deprecated_member_use
+            (_p.isEditorial ? _p.textPrimary : _p.accent).withOpacity(.12),
             _p.surface,
           ),
           side: BorderSide(color: _p.stroke),
@@ -584,7 +585,8 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
     onSelected: (_) => setState(() => _timeGoal = value),
     backgroundColor: _p.surface,
     selectedColor: Color.alphaBlend(
-      (_p.isEditorial ? _p.textPrimary : _p.accent).withValues(alpha: .12),
+      // ignore: deprecated_member_use
+      (_p.isEditorial ? _p.textPrimary : _p.accent).withOpacity(.12),
       _p.surface,
     ),
     side: BorderSide(color: _p.stroke),
@@ -921,7 +923,8 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
     data: PlanDesign.theme(context),
     child: PopScope(
       canPop: _busy || _draft != null || _step == 0,
-      onPopInvokedWithResult: (didPop, result) {
+      // ignore: deprecated_member_use
+      onPopInvoked: (didPop) {
         if (!didPop && !_busy && _draft == null && _step > 0) _previousStep();
       },
       child: Scaffold(
