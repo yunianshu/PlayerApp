@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import 'app_toast.dart';
+
 import 'package:flutter/services.dart';
 
 import '../core/i18n.dart';
@@ -60,7 +62,10 @@ Future<void> showVoiceSettingsDialog(BuildContext context) async {
                 segments: [
                   ButtonSegment(
                     value: 500,
-                    label: Text('500米'.tr, style: const TextStyle(fontSize: 12)),
+                    label: Text(
+                      '500米'.tr,
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ),
                   ButtonSegment(
                     value: 1000,
@@ -110,7 +115,7 @@ Future<void> showVoiceSettingsDialog(BuildContext context) async {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('保存'.tr, style: TextStyle(color: c.accent)),
+            child: Text('保存'.tr, style: TextStyle(color: c.actionForeground)),
           ),
         ],
       ),
@@ -217,7 +222,7 @@ Future<void> showPaceTargetDialog(BuildContext context) async {
                 setState(() => error = '保存目标失败'.tr);
               }
             },
-            child: Text('保存'.tr, style: TextStyle(color: c.accent)),
+            child: Text('保存'.tr, style: TextStyle(color: c.actionForeground)),
           ),
         ],
       ),
@@ -352,7 +357,7 @@ Future<void> showDiagnosticsDialog(BuildContext context) async {
                 }
               }
             },
-            child: Text('复制'.tr, style: TextStyle(color: c.accent)),
+            child: Text('复制'.tr, style: TextStyle(color: c.actionForeground)),
           ),
         if (log != null && log.isNotEmpty)
           TextButton(

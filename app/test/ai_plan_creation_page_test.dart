@@ -111,6 +111,9 @@ Future<void> fill(WidgetTester tester, {String name = '测试马拉松'}) async 
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
   testWidgets('invalid input never loads generation or asks consent', (
     tester,
   ) async {

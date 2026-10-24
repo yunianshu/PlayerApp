@@ -7,6 +7,8 @@ import '../services/ai_coach_settings.dart';
 import '../services/ai_plan_generator.dart';
 import '../services/training_plan_catalog.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/weight_ai_consent.dart';
+import '../services/body_weight_service.dart';
 import 'ai_coach_settings_page.dart';
 
 typedef PlanGenerationAction = Future<AiPlanDraft> Function(
@@ -52,6 +54,7 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
   bool _saving = false;
   int _generation = 0;
   AiPlanDraft? _draft;
+  BodyWeightSnapshot? _draftWeightSnapshot;
 
   @override
   void initState() {
@@ -179,34 +182,65 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
         if (!mounted || generation != _generation || !settings.ready) return;
       }
       final config = settings.config!;
+      BodyWeightSnapshot? weightSnapshot;
+      try {
+        weightSnapshot = await BodyWeightService.instance.snapshot();
+      } catch (_) {
+        /* Optional data never blocks generation. */
+      }
+      final weightSummary = weightSnapshot?.summary(
+        widget.now ?? DateTime.now(),
+      );
+      var includeWeight = false;
+      if (!mounted || generation != _generation) return;
       final consent = await showDialog<bool>(
         context: context,
         builder: (ctx) => Theme(
           data: PlanDesign.theme(context),
-          child: AlertDialog(
-            title: const Text('确认发送并生成计划'),
-            content: SingleChildScrollView(
-              child: Text(
-                '服务地址：${config.endpoint}\n模型：${config.model}\n\n'
-                '将发送你填写的赛事名称、开始和比赛日期、目标成绩、近期周跑量、最长跑距、10 公里成绩（若填写）、可训练日和恢复状态。API Key 也会发送到该地址用于认证。\n\n'
-                '不发送 GPS 轨迹、姓名或其他训练记录。恢复状态属于健康相关信息，请仅向你信任的服务商发送；服务商可能收取费用。\n\n'
-                'AI 计划需通过本地规则校验并由你确认后保存，不保证完赛或成绩，不替代医生或教练建议。',
+          child: StatefulBuilder(
+            builder: (ctx, updateConsent) => AlertDialog(
+              title: const Text('确认发送并生成计划'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '服务地址：${config.endpoint}\n模型：${config.model}\n\n'
+                      '将发送你填写的赛事名称、开始和比赛日期、目标成绩、近期周跑量、最长跑距、10 公里成绩（若填写）、可训练日和恢复状态。API Key 也会发送到该地址用于认证。\n\n'
+                      '不发送 GPS 轨迹、姓名或其他训练记录。恢复状态属于健康相关信息，请仅向你信任的服务商发送；服务商可能收取费用。\n\n'
+                      'AI 计划需通过本地规则校验并由你确认后保存，不保证完赛或成绩，不替代医生或教练建议。',
+                    ),
+                    WeightAiConsent(
+                      unavailable: weightSnapshot == null,
+                      summary: weightSummary,
+                      selected: includeWeight,
+                      onChanged: (value) =>
+                          updateConsent(() => includeWeight = value),
+                    ),
+                  ],
+                ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('同意发送并生成'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('同意发送并生成'),
-              ),
-            ],
           ),
         ),
       );
       if (consent != true || !mounted || generation != _generation) return;
+      if (includeWeight &&
+          !await BodyWeightService.instance.unchanged(weightSnapshot!)) {
+        throw StateError('体重记录已变化，请重新确认生成');
+      }
+      if (!mounted || generation != _generation) return;
+      request = request.withWeightSummary(includeWeight ? weightSummary : null);
       final draft =
           await (widget.generate?.call(request, settings) ??
               AiPlanGenerator.generate(
@@ -224,7 +258,15 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
           currentSettings.apiKey != settings.apiKey) {
         throw StateError('AI 服务配置已变化，请重新确认并生成计划');
       }
-      setState(() => _draft = draft);
+      if (includeWeight &&
+          !await BodyWeightService.instance.unchanged(weightSnapshot!)) {
+        throw StateError('体重记录已变化，请重新生成计划');
+      }
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _draft = draft;
+        _draftWeightSnapshot = includeWeight ? weightSnapshot : null;
+      });
       _scrollToTop();
     } catch (error) {
       if (mounted && generation == _generation) {
@@ -239,6 +281,11 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
     if (_draft == null || _saving) return;
     setState(() => _saving = true);
     try {
+      if (_draftWeightSnapshot != null &&
+          !await BodyWeightService.instance.unchanged(_draftWeightSnapshot!)) {
+        throw StateError('体重记录已变化，请返回重新生成');
+      }
+      if (!mounted) return;
       await (widget.saveDraft?.call(_draft!.plan) ??
           TrainingPlanCatalog.addDraft(_draft!.plan));
       if (mounted) Navigator.of(context).pop(true);
@@ -513,9 +560,9 @@ class _AiPlanCreationPageState extends State<AiPlanCreationPage> {
     _field('plan-ten-km', '近期 10 km 用时 · 分钟（可选）', _tenKm, optional: true),
     DropdownButtonFormField<String>(
       key: const Key('plan-recovery'),
-// Flutter 3.22 fork 无 initialValue；value 在 3.47 弃用仍可用。
+      // Flutter 3.22 fork 无 initialValue；value 在 3.47 弃用仍可用。
       // ignore: deprecated_member_use
-            value: _recovery,
+      value: _recovery,
       isExpanded: true,
       decoration: _decoration('当前恢复情况'),
       items: const [

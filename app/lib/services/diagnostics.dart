@@ -16,6 +16,7 @@ class Diagnostics {
   static const _fileName = 'diagnostics.log';
   static const _maxBytes = 256 * 1024;
   static bool _installed = false;
+  static Future<void> _pending = Future<void>.value();
 
   /// 挂接 Flutter 框架异常与未捕获异步异常。可在 main() 调用一次。
   static void install() {
@@ -58,7 +59,12 @@ class Diagnostics {
     await _write('$source $error$trace');
   }
 
-  static Future<void> _write(String line) async {
+  static Future<void> _write(String line) {
+    _pending = _pending.then((_) => _append(line));
+    return _pending;
+  }
+
+  static Future<void> _append(String line) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$_fileName');
@@ -75,7 +81,8 @@ class Diagnostics {
   }
 
   /// 读取最近的日志（尾部 maxChars 字符）；文件不存在返回 null。
-  static Future<String?> readRecent({int maxChars = 6000}) async {
+  static Future<String?> readRecent({int maxChars = 60000}) async {
+    await _pending;
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$_fileName');
@@ -90,7 +97,12 @@ class Diagnostics {
     }
   }
 
-  static Future<void> clear() async {
+  static Future<void> clear() {
+    _pending = _pending.then((_) => _clearFile());
+    return _pending;
+  }
+
+  static Future<void> _clearFile() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$_fileName');

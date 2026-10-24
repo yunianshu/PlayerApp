@@ -8,6 +8,7 @@ import '../core/prefs.dart';
 import '../core/theme.dart';
 import '../services/courses.dart';
 import '../services/tts_service.dart';
+import '../services/run_feedback_diagnostics.dart';
 import '../widgets/common.dart';
 import '../widgets/exercise_video.dart';
 
@@ -99,7 +100,12 @@ class _CoursePageState extends State<CoursePage> {
       return;
     }
     // 本节结束：震动反馈并推进到下一节（或收尾）。
-    HapticFeedback.mediumImpact();
+    unawaited(
+      RunFeedbackDiagnostics.haptic(
+        'course_step_complete',
+        HapticFeedback.mediumImpact,
+      ),
+    );
     if (_index + 1 < _course.steps.length) {
       _goTo(_index + 1);
     } else {
@@ -121,7 +127,12 @@ class _CoursePageState extends State<CoursePage> {
 
   void _finish() {
     _ticker?.cancel();
-    HapticFeedback.heavyImpact();
+    unawaited(
+      RunFeedbackDiagnostics.haptic(
+        'course_complete',
+        HapticFeedback.heavyImpact,
+      ),
+    );
     setState(() => _finished = true);
     _speakFinish();
   }
@@ -264,13 +275,10 @@ class _CoursePageState extends State<CoursePage> {
   List<Widget> _fullscreenStage(AppPalette c) => [
     Expanded(
       child: _hasVideo
-          ? ExerciseVideo(
-              anim: _step.anim,
-              fallbackImage: _fallbackImage(c),
-            )
+          ? ExerciseVideo(anim: _step.anim, fallbackImage: _fallbackImage(c))
           : _hasImage
-              ? _fallbackImage(c)
-              : _mediaPlaceholder(c),
+          ? _fallbackImage(c)
+          : _mediaPlaceholder(c),
     ),
     Align(
       alignment: Alignment.centerLeft,

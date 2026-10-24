@@ -3,16 +3,17 @@ import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
-import notification from '@ohos.notification';
 import { wantAgent, WantAgent } from '@kit.AbilityKit';
 import { textToSpeech } from '@kit.CoreSpeechKit';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 import AiCredentialsStore from '../security/AiCredentialsStore';
 import TrainingReminders from '../reminders/TrainingReminders';
 import LauncherIconSupport from '../appearance/LauncherIconSupport';
+import RunningNotification from '../running/RunningNotification';
 
 export default class EntryAbility extends FlutterAbility {
   private backgroundChannel?: MethodChannel;
+  private runningNotification: RunningNotification = new RunningNotification();
   private ttsEngine?: textToSpeech.TextToSpeechEngine;
   private ttsLang: string = 'zh-CN';
   private ttsReady: boolean = false;
@@ -30,39 +31,27 @@ export default class EntryAbility extends FlutterAbility {
     this.backgroundChannel.setMethodCallHandler({
       onMethodCall: (call: MethodCall, result: MethodResult) => {
         if (call.method === 'start') {
+          this.runningNotification.begin();
           // 请求通知授权（未授权时自定义实时成绩通知无法显示）。
-          notificationManager.requestEnableNotification(this.context).catch(() => {})
+          notificationManager.requestEnableNotification(this.context)
+            .then(() => console.info('RUN_FEEDBACK source=notification_permission phase=accepted'))
+            .catch((err: BusinessError) => console.info(`RUN_FEEDBACK source=notification_permission phase=error code=${err.code}`))
           this.startContinuousTask(result)
         } else if (call.method === 'stop') {
-          notificationManager.cancel(1001).catch(() => {})
+          this.runningNotification.end().catch((err: BusinessError) => {
+            console.info(`RUN_FEEDBACK source=running_notification phase=cancel_error code=${err.code}`)
+          })
           this.stopContinuousTask(result)
         } else if (call.method === 'update') {
-          // 系统长时任务通知内容不可定制；另发一条自定义通知显示实时成绩，
-          // 同 id 重复 publish 即为更新。
           const text: string = call.argument('text') ?? ''
-          if (text.length > 0) {
-            notificationManager.publish({
-              id: 1001,
-              // SOCIAL_COMMUNICATION 槽位：锁屏可见（Keep 同款行为）；
-              // 默认槽位的通知在部分系统版本锁屏不展示。
-              notificationSlotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
-              content: {
-                // 新旧模块 ContentType 枚举类型不兼容，publish 入参需要旧枚举。
-                contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
-                normal: {
-                  title: '跑步记录中',
-                  text: text,
-                  additionalText: '跑迹 RunTrail'
-                }
-              }
-            }).then(() => result.success(null))
-              .catch((err: BusinessError) => {
-                console.error(`live notification publish failed: ${err.code} ${err.message}`)
-                result.success(null)
-              })
-          } else {
-            result.success(null)
-          }
+          const requestId: string = call.argument('requestId') ?? 'unknown'
+          const elapsedMs: number = call.argument('elapsedMs') ?? 0
+          this.runningNotification.update(text, requestId, elapsedMs)
+            .then((summary: string) => result.success(summary))
+            .catch((err: BusinessError) => {
+              console.info(`RUN_FEEDBACK source=running_notification phase=error requestId=${requestId} code=${err.code}`)
+              result.error('NOTIFICATION_UPDATE_FAILED', '实时通知更新失败', err.code)
+            })
         } else {
           result.notImplemented()
         }
@@ -201,7 +190,8 @@ export default class EntryAbility extends FlutterAbility {
     }).then(() => {
       result.success(null)
     }).catch((err: BusinessError) => {
-      console.error(`continuous task start failed: ${err.code} ${err.message}`)
+      this.runningNotification.end().catch(() => {})
+      console.info(`RUN_FEEDBACK source=background_task phase=error code=${err.code}`)
       result.error('BACKGROUND_START_FAILED', '后台定位启动失败', null)
     })
   }

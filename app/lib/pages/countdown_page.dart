@@ -8,6 +8,7 @@ import '../core/i18n.dart';
 import '../core/prefs.dart';
 import '../core/theme.dart';
 import '../services/tts_service.dart';
+import '../services/run_feedback_diagnostics.dart';
 
 /// 运动开始前全屏倒计时：3 -> 2 -> 1 -> GO。
 /// 开启语音播报时逐字口播数字，结束播报「开始跑步」。
@@ -42,7 +43,12 @@ class _CountdownPageState extends State<CountdownPage>
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _completed = true;
-        HapticFeedback.heavyImpact();
+        unawaited(
+          RunFeedbackDiagnostics.haptic(
+            'countdown_complete',
+            HapticFeedback.heavyImpact,
+          ),
+        );
         _speakStart();
         widget.onComplete();
       }
@@ -54,7 +60,12 @@ class _CountdownPageState extends State<CountdownPage>
         _totalSeconds,
       );
       if (remaining != _current) {
-        HapticFeedback.mediumImpact();
+        unawaited(
+          RunFeedbackDiagnostics.haptic(
+            'countdown_tick',
+            HapticFeedback.mediumImpact,
+          ),
+        );
         setState(() => _current = remaining);
       }
       _speakNumber(_current);

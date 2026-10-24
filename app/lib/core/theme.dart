@@ -73,6 +73,9 @@ class AppPalette {
     this.ringB = const Color(0xFFFFE066),
   });
 
+  /// Action labels/icons on paper surfaces must not use decorative lime ink.
+  Color get actionForeground => isEditorial ? textPrimary : accent;
+
   /// 是否为编辑风（发丝边框、无阴影、衬线数字、墨色标签栏）。
   bool get isEditorial => identical(this, editorial);
 
@@ -268,9 +271,21 @@ ThemeData buildTheme(AppThemeStyle style) {
     colorScheme: base.colorScheme.copyWith(
       // 编辑风荧光绿在米色底上对比不足，primary 改用墨色（绿仅用于深底/点缀）。
       primary: p.isEditorial ? p.textPrimary : p.accent,
+      onPrimary: p.isEditorial ? p.onInverse : (p.isDark ? p.bg : p.onAccent),
+      primaryContainer: p.surface2,
+      onPrimaryContainer: p.textPrimary,
       secondary: p.accent,
+      onSecondary: p.isDark ? p.bg : p.onAccent,
+      secondaryContainer: p.surface2,
+      onSecondaryContainer: p.textPrimary,
       surface: p.surface,
+      onSurface: p.textPrimary,
+      onSurfaceVariant: p.textSecondary,
+      inverseSurface: p.inverseSurface,
+      onInverseSurface: p.onInverse,
+      inversePrimary: p.isEditorial ? p.onInverseAccent : p.onInverse,
       error: p.danger,
+      onError: p.isDark ? p.bg : Colors.white,
     ),
     splashFactory: InkSparkle.splashFactory,
     appBarTheme: const AppBarTheme(

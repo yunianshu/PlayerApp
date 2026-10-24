@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import '../widgets/app_toast.dart';
+
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +15,7 @@ import '../services/run_prs.dart';
 import '../services/run_storage.dart';
 import '../services/run_tracker.dart';
 import '../services/tts_service.dart';
+import '../services/run_feedback_diagnostics.dart';
 import '../services/tracking_policies.dart';
 import '../widgets/common.dart';
 import '../widgets/route_painter.dart';
@@ -32,7 +35,7 @@ class RunningPage extends StatefulWidget {
   State<RunningPage> createState() => _RunningPageState();
 }
 
-class _RunningPageState extends State<RunningPage> {
+class _RunningPageState extends State<RunningPage> with WidgetsBindingObserver {
   bool _locked = false;
   bool _ending = false;
   late final RunTracker _tracker;
@@ -56,6 +59,12 @@ class _RunningPageState extends State<RunningPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    RunFeedbackDiagnostics.event('running_page', 'opened', {
+      'autoPauseEnabled': Prefs.instance.autoPauseEnabled,
+      'targetPaceEnabled': Prefs.instance.paceTargetSecPerKm > 0,
+      'voiceEnabled': Prefs.instance.voiceEnabled,
+    });
     _tracker = context.read<RunTracker>();
     _tracker.onInterval = _announceInterval;
     _tracker.onAutoPause = _onAutoPause;
@@ -77,7 +86,16 @@ class _RunningPageState extends State<RunningPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    RunFeedbackDiagnostics.event('running_page', 'lifecycle', {
+      'state': state.name,
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    RunFeedbackDiagnostics.event('running_page', 'closed');
     _paceTimer?.cancel();
     _recordBannerTimer?.cancel();
     _tracker.onInterval = null;
@@ -97,9 +115,7 @@ class _RunningPageState extends State<RunningPage> {
         '未授予通知权限，锁屏将看不到实时成绩'.tr,
         duration: const Duration(seconds: 8),
         actionLabel: '去开启'.tr,
-        onAction: () => unawaited(
-          BackgroundService.openNotificationSettings(),
-        ),
+        onAction: () => unawaited(BackgroundService.openNotificationSettings()),
       );
     } on Object {
       // 引导失败不影响跑步。
@@ -127,6 +143,10 @@ class _RunningPageState extends State<RunningPage> {
     int? kmSplitSeconds,
   ) {
     if (!mounted) return;
+    RunFeedbackDiagnostics.event('distance_milestone', 'reached', {
+      'voiceEnabled': Prefs.instance.voiceEnabled,
+      'explicitHaptic': false,
+    });
     final en = LocaleController.instance.isEnglish;
     final result = kmAnnouncementText(
       english: en,
@@ -165,7 +185,14 @@ class _RunningPageState extends State<RunningPage> {
 
   /// 破纪录/里程碑横幅（Keep 同款 trophy 反馈）：4 秒后自动消失。
   void _showRecordBanner(
-    ({String? text, bool newBest1km, bool newLongest, bool newHalf, bool newFull}) result,
+    ({
+      String? text,
+      bool newBest1km,
+      bool newLongest,
+      bool newHalf,
+      bool newFull,
+    })
+    result,
     bool en,
   ) {
     final String? banner;
@@ -216,11 +243,23 @@ class _RunningPageState extends State<RunningPage> {
     // 只是震一遍+播一遍的打扰频率被限制在 45 秒至多一次。
     final now = DateTime.now();
     final lastNotify = _lastAutoPauseNotifyAt;
-    if (lastNotify != null && now.difference(lastNotify) < _autoPauseNotifyGap) {
+    if (lastNotify != null &&
+        now.difference(lastNotify) < _autoPauseNotifyGap) {
+      RunFeedbackDiagnostics.event(
+        paused ? 'auto_pause' : 'auto_resume',
+        'suppressed',
+        {'reason': 'feedback_cooldown'},
+      );
       return;
     }
     _lastAutoPauseNotifyAt = now;
-    HapticFeedback.mediumImpact();
+    unawaited(
+      RunFeedbackDiagnostics.haptic(
+        paused ? 'auto_pause' : 'auto_resume',
+        HapticFeedback.mediumImpact,
+        fields: {'autoPauseEnabled': Prefs.instance.autoPauseEnabled},
+      ),
+    );
     if (!mounted || !Prefs.instance.voiceEnabled) return;
     // flush 立即播：暂停/恢复是即时状态变化，排队等上一条会让人以为没播。
     unawaited(
@@ -234,15 +273,17 @@ class _RunningPageState extends State<RunningPage> {
   /// 手动暂停/继续与自动暂停一样播报语音，并申请音频焦点压低其他应用音量。
   void _togglePause(RunTracker t) {
     final resuming = t.state == RunState.paused;
-    HapticFeedback.mediumImpact();
+    unawaited(
+      RunFeedbackDiagnostics.haptic(
+        resuming ? 'manual_resume' : 'manual_pause',
+        HapticFeedback.mediumImpact,
+      ),
+    );
     resuming ? t.resume() : t.pause();
     if (!mounted || !Prefs.instance.voiceEnabled) return;
     // flush 立即播（同上）。
     unawaited(
-      TtsService.speak(
-        resuming ? '继续跑步，加油！'.tr : '已暂停'.tr,
-        flush: true,
-      ),
+      TtsService.speak(resuming ? '继续跑步，加油！'.tr : '已暂停'.tr, flush: true),
     );
   }
 
@@ -264,7 +305,13 @@ class _RunningPageState extends State<RunningPage> {
     final pace = tracker.currentPace;
     final alert = evaluator.feed(pace, 1);
     if (alert != null) {
-      HapticFeedback.heavyImpact();
+      unawaited(
+        RunFeedbackDiagnostics.haptic(
+          'pace_target',
+          HapticFeedback.heavyImpact,
+          fields: {'targetPaceEnabled': Prefs.instance.paceTargetSecPerKm > 0},
+        ),
+      );
       if (Prefs.instance.voiceEnabled) {
         unawaited(
           TtsService.speak(
@@ -339,12 +386,16 @@ class _RunningPageState extends State<RunningPage> {
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 240),
                         transitionBuilder: (child, anim) => SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, -0.6),
-                            end: Offset.zero,
-                          ).animate(
-                            CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
-                          ),
+                          position:
+                              Tween<Offset>(
+                                begin: const Offset(0, -0.6),
+                                end: Offset.zero,
+                              ).animate(
+                                CurvedAnimation(
+                                  parent: anim,
+                                  curve: Curves.easeOutCubic,
+                                ),
+                              ),
                           child: FadeTransition(opacity: anim, child: child),
                         ),
                         child: Container(
@@ -635,7 +686,12 @@ class _RunningPageState extends State<RunningPage> {
           icon: Icons.lock_open_rounded,
           iconColor: c.textSecondary,
           onTap: () {
-            HapticFeedback.lightImpact();
+            unawaited(
+              RunFeedbackDiagnostics.haptic(
+                'screen_lock',
+                HapticFeedback.lightImpact,
+              ),
+            );
             setState(() => _locked = true);
           },
         ),
@@ -729,7 +785,12 @@ class _RunningPageState extends State<RunningPage> {
                 const SizedBox(height: 28),
                 GestureDetector(
                   onLongPress: () {
-                    HapticFeedback.lightImpact();
+                    unawaited(
+                      RunFeedbackDiagnostics.haptic(
+                        'screen_unlock',
+                        HapticFeedback.lightImpact,
+                      ),
+                    );
                     setState(() => _locked = false);
                   },
                   child: Container(
@@ -771,7 +832,12 @@ class _RunningPageState extends State<RunningPage> {
     if (_ending) return;
     _ending = true;
     try {
-      HapticFeedback.mediumImpact();
+      unawaited(
+        RunFeedbackDiagnostics.haptic(
+          'manual_end',
+          HapticFeedback.mediumImpact,
+        ),
+      );
       final record = await t.stop();
       if (!mounted) return;
       if (record == null) {
@@ -792,11 +858,8 @@ class _RunningPageState extends State<RunningPage> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => SummaryPage.fromTracker(
-            record,
-            t.points,
-            alreadySaved: saved,
-          ),
+          builder: (_) =>
+              SummaryPage.fromTracker(record, t.points, alreadySaved: saved),
         ),
       );
     } catch (_) {

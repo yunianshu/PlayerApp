@@ -313,7 +313,7 @@ void main() {
       await TrainingPlanCatalog.activate('a');
       final proposal = await AdaptiveTrainingService.suggest(
         now: DateTime(2027, 2, 1),
-        actualKm: {},
+        actualKm: {'2027-01-31': 0}, // Explicit zero, not missing history.
       );
       await TrainingPlanCatalog.applyFutureRevision(
         planId: 'a',

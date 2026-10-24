@@ -25,7 +25,11 @@ class BadgesCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(Icons.emoji_events_outlined, size: 22, color: c.accent),
+                Icon(
+                  Icons.emoji_events_outlined,
+                  size: 22,
+                  color: c.actionForeground,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -184,7 +188,7 @@ Future<void> showBadgeUnlockDialog(
       backgroundColor: c.surface,
       title: Row(
         children: [
-          Icon(Icons.emoji_events_rounded, color: c.accent, size: 22),
+          Icon(Icons.emoji_events_rounded, color: c.actionForeground, size: 22),
           const SizedBox(width: 8),
           Text(
             '恭喜解锁新徽章'.tr,
@@ -200,7 +204,11 @@ Future<void> showBadgeUnlockDialog(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Icon(_iconOfStatic(b.icon), size: 16, color: c.accent),
+                  Icon(
+                    _iconOfStatic(b.icon),
+                    size: 16,
+                    color: c.actionForeground,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -216,7 +224,7 @@ Future<void> showBadgeUnlockDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child: Text('好'.tr, style: TextStyle(color: c.accent)),
+          child: Text('好'.tr, style: TextStyle(color: c.actionForeground)),
         ),
       ],
     ),

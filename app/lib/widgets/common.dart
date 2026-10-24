@@ -311,13 +311,17 @@ class PrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final editorial = c.isEditorial;
+    final enabled = onTap != null;
+    final foreground = !enabled
+        ? c.textMuted
+        : (editorial ? c.onInverse : c.onAccent);
     return Material(
       color: Colors.transparent,
       child: Ink(
         decoration: BoxDecoration(
           // 渐变两端各加深：亮色端（原 accent/accent2）与白字对比不足
           // （浅色主题 accent2 端 1.76、暗色主题 accent 端 2.82）。
-          gradient: editorial
+          gradient: editorial || !enabled
               ? null
               : LinearGradient(
                   begin: Alignment.topLeft,
@@ -327,9 +331,9 @@ class PrimaryButton extends StatelessWidget {
                     Color.lerp(c.accent, Colors.black, 0.40)!,
                   ],
                 ),
-          color: editorial ? c.inverseSurface : null,
+          color: !enabled ? c.surface2 : (editorial ? c.inverseSurface : null),
           borderRadius: BorderRadius.circular(AppRadius.md),
-          boxShadow: editorial
+          boxShadow: editorial || !enabled
               ? null
               : [
                   BoxShadow(
@@ -343,21 +347,24 @@ class PrimaryButton extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             alignment: Alignment.center,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (icon != null) ...[
-                  Icon(icon, color: c.onAccent, size: 20),
+                  Icon(icon, color: foreground, size: 20),
                   const SizedBox(width: 8),
                 ],
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: c.onAccent,
+                Flexible(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: foreground,
+                    ),
                   ),
                 ),
               ],
@@ -383,7 +390,7 @@ class GhostButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final editorial = c.isEditorial;
-    final fg = color ?? c.textPrimary;
+    final fg = onTap == null ? c.textMuted : (color ?? c.textPrimary);
     return Material(
       color: editorial ? Colors.transparent : c.surface,
       shape: editorial
@@ -398,7 +405,7 @@ class GhostButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           alignment: Alignment.center,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -407,12 +414,15 @@ class GhostButton extends StatelessWidget {
                 Icon(icon, color: fg, size: 17),
                 const SizedBox(width: 8),
               ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: fg,
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: fg,
+                  ),
                 ),
               ),
             ],
@@ -446,7 +456,11 @@ class CircleBtn extends StatelessWidget {
           shape: BoxShape.circle,
           border: editorial ? Border.all(color: c.stroke) : null,
         ),
-        child: Icon(icon, size: size * 0.5, color: c.textPrimary),
+        child: Icon(
+          icon,
+          size: size * 0.5,
+          color: onTap == null ? c.textMuted : c.textPrimary,
+        ),
       ),
     );
   }

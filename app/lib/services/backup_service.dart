@@ -6,6 +6,7 @@ import '../core/i18n.dart';
 import '../core/prefs.dart';
 import '../data/database.dart';
 import '../models/run_record.dart';
+import 'body_weight_service.dart';
 
 /// 全量备份 / 恢复：runs + points + 偏好设置，JSON 单文件。
 /// 导出走系统分享（用户自选保存位置）；恢复通过原生文件选择
@@ -50,7 +51,7 @@ class BackupService {
   };
 
   /// 导出全部数据为 JSON 字符串（分离 IO 便于单测）。
-  static Future<String> exportJson() async {
+  static Future<String> exportJson({bool includeWeight = false}) async {
     final runs = await RunDatabase.instance.listRuns();
     final points = <String, List<RunPoint>>{};
     for (final r in runs) {
@@ -59,7 +60,14 @@ class BackupService {
         points[r.sessionKey] = await RunDatabase.instance.getPoints(id);
       }
     }
-    return jsonEncode(build(runs, points));
+    final data = build(runs, points);
+    if (includeWeight) {
+      data['body_weight_records'] =
+          (await BodyWeightService.instance.snapshot()).records
+              .map((r) => r.toJson())
+              .toList();
+    }
+    return jsonEncode(data);
   }
 
   /// 解析并导入备份，返回成功导入的记录数。
@@ -76,6 +84,15 @@ class BackupService {
     if (app != 'RunTrail') throw const BackupFormatException();
     final runsRaw = decoded['runs'];
     if (runsRaw is! List) throw const BackupFormatException();
+    final weights = decoded['body_weight_records'];
+    if (weights != null) {
+      if (weights is! List) throw const BackupFormatException();
+      try {
+        await BodyWeightService.instance.mergeBackup(weights);
+      } on FormatException {
+        throw const BackupFormatException();
+      }
+    }
     await _restorePrefs(decoded['prefs']);
     var imported = 0;
     var skipped = 0;
@@ -129,20 +146,27 @@ class BackupService {
     final endMs = raw['end_ms'];
     final distance = raw['distance_m'];
     final duration = raw['duration_s'];
-    if (startMs is! num || endMs is! num || distance is! num || duration is! num) {
+    if (startMs is! num ||
+        endMs is! num ||
+        distance is! num ||
+        duration is! num) {
       return null;
     }
     final calories = raw['calories'];
     final km = distance.toDouble() / 1000;
     return RunRecord(
-      sessionId: raw['session_id'] is String ? raw['session_id'] as String : null,
+      sessionId: raw['session_id'] is String
+          ? raw['session_id'] as String
+          : null,
       start: DateTime.fromMillisecondsSinceEpoch(startMs.toInt()),
       end: DateTime.fromMillisecondsSinceEpoch(endMs.toInt()),
       distanceM: distance.toDouble(),
       durationS: duration.toInt(),
       calories: calories is num ? calories.toInt() : (km * 65 * 1.036).round(),
       climbM: raw['climb_m'] is num ? (raw['climb_m'] as num).toDouble() : 0,
-      source: raw['source'] is String ? raw['source'] as String : RunRecord.sourceGps,
+      source: raw['source'] is String
+          ? raw['source'] as String
+          : RunRecord.sourceGps,
       title: raw['title'] is String ? raw['title'] as String : '',
       notes: raw['notes'] is String ? raw['notes'] as String : '',
     );

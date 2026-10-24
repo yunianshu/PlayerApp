@@ -131,6 +131,15 @@ class AiPlanAdjustmentPage extends StatelessWidget {
                     height: 1.6,
                   ),
                 ),
+                if (draft.adaptationEvidence.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    '本次自适应依据',
+                    style: appTextStyle(p, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  PlanNotice(messages: draft.adaptationEvidence),
+                ],
                 const SizedBox(height: 12),
                 Text(
                   '${draft.plan['name'] ?? '马拉松训练'} · 共 ${changes.length} 个日期变化',

@@ -230,7 +230,7 @@ class HomePageState extends State<HomePage> {
         ).push(MaterialPageRoute(builder: (_) => const MarathonTrainingPage())),
         child: Row(
           children: [
-            Icon(Icons.calendar_month_outlined, color: c.accent),
+            Icon(Icons.calendar_month_outlined, color: c.actionForeground),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -275,7 +275,11 @@ class HomePageState extends State<HomePage> {
                 color: c.accentSoft,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.edit_note_rounded, size: 18, color: c.accent),
+              child: Icon(
+                Icons.edit_note_rounded,
+                size: 18,
+                color: c.actionForeground,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -625,7 +629,11 @@ class HomePageState extends State<HomePage> {
               color: c.accentSoft,
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.restore_rounded, size: 18, color: c.accent),
+            child: Icon(
+              Icons.restore_rounded,
+              size: 18,
+              color: c.actionForeground,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

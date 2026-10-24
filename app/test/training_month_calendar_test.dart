@@ -208,13 +208,13 @@ void main() {
       var cell = tester.widget<Semantics>(
         find.byKey(const ValueKey('training-calendar-semantics-2023-12-31')),
       );
-      expect(cell.properties.label, contains('未记录完成'));
+      expect(cell.properties.label, contains('暂无跑步记录'));
       expect(cell.properties.label, isNot(contains('漏练')));
       await pumpCalendar(tester, selected: '2024-01-01');
       cell = tester.widget<Semantics>(
         find.byKey(const ValueKey('training-calendar-semantics-2024-01-01')),
       );
-      expect(cell.properties.label, contains('今天 休息'));
+      expect(cell.properties.label, contains('今天 非跑步任务'));
       expect(cell.properties.selected, true);
       await pumpCalendar(
         tester,
@@ -224,7 +224,7 @@ void main() {
       cell = tester.widget<Semantics>(
         find.byKey(const ValueKey('training-calendar-semantics-2024-01-01')),
       );
-      expect(cell.properties.label, contains('已完成'));
+      expect(cell.properties.label, contains('已手动完成'));
       expect(find.text('计划 0 km · 已完成 1/1 天'), findsOneWidget);
     },
   );
