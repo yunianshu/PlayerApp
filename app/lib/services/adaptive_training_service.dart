@@ -64,24 +64,48 @@ class AdaptiveTrainingService {
       final day = DateTime.parse(t.date);
       return !day.isBefore(lastWeekStart) && day.isBefore(today);
     }).toList();
-    final planned = recent.fold<double>(0, (sum, t) => sum + t.km);
-    final actual = recent.fold<double>(
+    final running = recent.where((t) => t.km > 0 && t.type != 'RACE').toList();
+    final observed = running
+        .where(
+          (t) =>
+              actualKm[t.date] != null &&
+              actualKm[t.date]!.isFinite &&
+              actualKm[t.date]! >= 0,
+        )
+        .toList();
+    // Missing or partially imported records are unknown, not missed sessions.
+    final completeCoverage =
+        running.isNotEmpty && observed.length == running.length;
+    final planned = observed.fold<double>(0, (sum, t) => sum + t.km);
+    final actual = observed.fold<double>(
       0,
-      (sum, t) => sum + (actualKm[t.date] ?? 0),
+      (sum, t) => sum + actualKm[t.date]!,
     );
     final recentScores = recent
         .map((t) => feedback[t.date])
         .whereType<Map<String, int>>();
     final maxPain = recentScores.fold<int>(
       0,
-      (v, item) => item['pain']! > v ? item['pain']! : v,
+      (v, item) =>
+          item['pain'] != null &&
+              item['pain']! >= 0 &&
+              item['pain']! <= 10 &&
+              item['pain']! > v
+          ? item['pain']!
+          : v,
     );
     final maxFatigue = recentScores.fold<int>(
       0,
-      (v, item) => item['fatigue']! > v ? item['fatigue']! : v,
+      (v, item) =>
+          item['fatigue'] != null &&
+              item['fatigue']! >= 0 &&
+              item['fatigue']! <= 10 &&
+              item['fatigue']! > v
+          ? item['fatigue']!
+          : v,
     );
-    // Any risk or missed mileage calls for conservative changes; never add missed miles.
-    final ratio = planned > 0 ? actual / planned : 1.0;
+    // Unknown coverage cannot justify distance-based reduction.
+    final ratio = completeCoverage && planned > 0 ? actual / planned : 1.0;
     final factor = maxPain >= 4
         ? 0.0
         : maxFatigue >= 7
@@ -118,6 +142,9 @@ class AdaptiveTrainingService {
       'factor': factor,
       'actualKm': actual,
       'plannedKm': planned,
+      'observedRunDays': observed.length,
+      'plannedRunDays': running.length,
+      'completeRunCoverage': completeCoverage,
       'maxPain': maxPain,
       'maxFatigue': maxFatigue,
       'reason': maxPain >= 4

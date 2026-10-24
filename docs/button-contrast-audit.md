@@ -1,0 +1,169 @@
+# Button contrast source audit — 2026-10-23
+
+## Findings and fix
+
+- PrimaryButton used ink background and onAccent ink foreground in editorial mode: 1.00:1. It now uses inverseSurface/onInverse, 16.25:1, including its icon.
+- Explicit lime text in record editing, settings sheets, badge and profile dialogs overrode the theme: lime on cream was 1.29:1. Paper-surface actions now use actionForeground (editorial ink); destructive red is preserved.
+- Global ColorScheme foregrounds/containers were inherited from the Material seed rather than paired with app backgrounds. Explicit onPrimary/onSecondary/onSurface/inverse pairs now follow the palette. Global FilledButton primary pairs: light 5.06:1, dark 6.74:1, editorial 16.25:1. Existing original palette constants are unchanged.
+- PrimaryButton disabled state now uses surface2/textMuted without glow. PrimaryButton and GhostButton labels wrap at narrow widths rather than overflowing their icon row.
+- Reviewed scoped PlanDesign button foreground inheritance, explicit child TextStyle, confirmation dialogs, settings, toast actions, training completion/hourglass, chips, calendar selection, custom click controls and action bars. No filled button contains a CircularProgressIndicator; async button states use text/hourglass. Standalone progress indicators are not represented as button spinners.
+- Decorative lime dots and non-button chart highlights remain intentionally unchanged. Shared PrimaryButton fix covers manual entry, course start, summary save and run-share actions. Palette tests alone had incorrectly represented the old widget as onInverse already, so actual-widget regression tests were added.
+
+## Verification status
+
+- Python WCAG luminance calculation verified the ratios above; git diff --check passed.
+- Added button_contrast_regression_test.dart: actual rendered label/icon inheritance, ordinary/destructive/scoped buttons, disabled/custom states, 320 px at 1x and 2x text, optional six real Flutter screenshots via BUTTON_PREVIEW_DIR.
+- Recovery verification (2026-10-24): the official Flutter 3.47.5 / Dart 3.13.4 toolchain was restored after the workspace reverted to an older snapshot. Current full Flutter suite passed 572/572 tests, including the rendered-widget contrast cases, and analyzer reported no issues; old validation logs were not used as evidence for the recovered source. Screenshot capture remains optional; do not infer all-screen visual QA from widget assertions.
+- NOT RUN: native Harmony/Android device dialogs, native accessibility, physical hover/focus/device behavior. Existing native Flutter 3.22 compatibility migration retained; no new post-3.22 APIs used in production edits.
+
+## Source inventory
+
+This inventory lists control construction sites (including nested/conditional controls), not unique visible buttons or a claim of runtime coverage. Excludes styleFrom factories and custom-widget constructor declarations. New concurrently developed pages may add sites after this snapshot.
+
+Counts: ChoiceChip 1, CircleBtn 7, FilledButton 19, FilterChip 1, GestureDetector 6, GhostButton 7, IconButton 20, InkWell 18, OutlinedButton 7, PrimaryButton 4, TextButton 55. Total 145.
+
+- app/lib/main.dart:222 — TextButton
+- app/lib/main.dart:226 — TextButton
+- app/lib/main.dart:374 — InkWell
+- app/lib/main.dart:413 — GestureDetector
+- app/lib/pages/ai_coach_settings_page.dart:187 — TextButton
+- app/lib/pages/ai_coach_settings_page.dart:191 — FilledButton
+- app/lib/pages/ai_coach_settings_page.dart:398 — TextButton
+- app/lib/pages/ai_coach_settings_page.dart:546 — IconButton
+- app/lib/pages/ai_coach_settings_page.dart:582 — OutlinedButton
+- app/lib/pages/ai_coach_settings_page.dart:681 — FilledButton
+- app/lib/pages/ai_coach_settings_page.dart:686 — OutlinedButton
+- app/lib/pages/ai_coach_settings_page.dart:691 — TextButton
+- app/lib/pages/ai_coach_settings_page.dart:695 — TextButton
+- app/lib/pages/ai_plan_adjustment_page.dart:238 — FilledButton
+- app/lib/pages/ai_plan_adjustment_page.dart:250 — TextButton
+- app/lib/pages/ai_plan_creation_page.dart:163 — TextButton
+- app/lib/pages/ai_plan_creation_page.dart:167 — FilledButton
+- app/lib/pages/ai_plan_creation_page.dart:205 — TextButton
+- app/lib/pages/ai_plan_creation_page.dart:209 — FilledButton
+- app/lib/pages/ai_plan_creation_page.dart:483 — OutlinedButton
+- app/lib/pages/ai_plan_creation_page.dart:560 — FilterChip
+- app/lib/pages/ai_plan_creation_page.dart:595 — ChoiceChip
+- app/lib/pages/ai_plan_creation_page.dart:948 — IconButton
+- app/lib/pages/ai_plan_creation_page.dart:970 — FilledButton
+- app/lib/pages/ai_plan_creation_page.dart:975 — TextButton
+- app/lib/pages/ai_plan_creation_page.dart:985 — FilledButton
+- app/lib/pages/ai_plan_creation_page.dart:997 — TextButton
+- app/lib/pages/ai_plan_creation_page.dart:1036 — TextButton
+- app/lib/pages/body_weight_page.dart:50 — TextButton
+- app/lib/pages/body_weight_page.dart:50 — FilledButton
+- app/lib/pages/body_weight_page.dart:61 — TextButton
+- app/lib/pages/body_weight_page.dart:61 — FilledButton
+- app/lib/pages/body_weight_page.dart:77 — TextButton
+- app/lib/pages/body_weight_page.dart:85 — FilledButton
+- app/lib/pages/body_weight_page.dart:87 — IconButton
+- app/lib/pages/course_page.dart:186 — TextButton
+- app/lib/pages/course_page.dart:190 — TextButton
+- app/lib/pages/course_page.dart:209 — IconButton
+- app/lib/pages/course_page.dart:345 — CircleBtn
+- app/lib/pages/course_page.dart:353 — IconButton
+- app/lib/pages/course_page.dart:364 — CircleBtn
+- app/lib/pages/course_page.dart:444 — PrimaryButton
+- app/lib/pages/courses_page.dart:100 — InkWell
+- app/lib/pages/detail_page.dart:160 — TextButton
+- app/lib/pages/detail_page.dart:164 — TextButton
+- app/lib/pages/detail_page.dart:201 — TextButton
+- app/lib/pages/detail_page.dart:205 — TextButton
+- app/lib/pages/detail_page.dart:253 — CircleBtn
+- app/lib/pages/detail_page.dart:285 — CircleBtn
+- app/lib/pages/detail_page.dart:360 — GhostButton
+- app/lib/pages/detail_page.dart:367 — GhostButton
+- app/lib/pages/detail_page.dart:373 — GhostButton
+- app/lib/pages/history_page.dart:214 — InkWell
+- app/lib/pages/history_page.dart:421 — InkWell
+- app/lib/pages/home_page.dart:153 — TextButton
+- app/lib/pages/home_page.dart:157 — TextButton
+- app/lib/pages/home_page.dart:227 — InkWell
+- app/lib/pages/home_page.dart:266 — InkWell
+- app/lib/pages/home_page.dart:338 — GestureDetector
+- app/lib/pages/home_page.dart:652 — TextButton
+- app/lib/pages/home_page.dart:659 — FilledButton
+- app/lib/pages/home_page.dart:856 — InkWell
+- app/lib/pages/home_page.dart:926 — InkWell
+- app/lib/pages/manual_entry_page.dart:135 — CircleBtn
+- app/lib/pages/manual_entry_page.dart:220 — PrimaryButton
+- app/lib/pages/manual_entry_page.dart:274 — InkWell
+- app/lib/pages/marathon_training_page.dart:347 — TextButton
+- app/lib/pages/marathon_training_page.dart:351 — FilledButton
+- app/lib/pages/marathon_training_page.dart:501 — TextButton
+- app/lib/pages/marathon_training_page.dart:505 — FilledButton
+- app/lib/pages/marathon_training_page.dart:573 — TextButton
+- app/lib/pages/marathon_training_page.dart:577 — FilledButton
+- app/lib/pages/marathon_training_page.dart:634 — IconButton
+- app/lib/pages/marathon_training_page.dart:640 — TextButton
+- app/lib/pages/marathon_training_page.dart:651 — IconButton
+- app/lib/pages/marathon_training_page.dart:658 — IconButton
+- app/lib/pages/marathon_training_page.dart:663 — IconButton
+- app/lib/pages/marathon_training_page.dart:695 — OutlinedButton
+- app/lib/pages/profile_page.dart:125 — TextButton
+- app/lib/pages/profile_page.dart:126 — TextButton
+- app/lib/pages/profile_page.dart:127 — TextButton
+- app/lib/pages/profile_page.dart:342 — TextButton
+- app/lib/pages/profile_page.dart:471 — CircleBtn
+- app/lib/pages/profile_page.dart:626 — InkWell
+- app/lib/pages/profile_page.dart:674 — InkWell
+- app/lib/pages/profile_page.dart:795 — IconButton
+- app/lib/pages/profile_page.dart:878 — InkWell
+- app/lib/pages/running_page.dart:709 — GestureDetector
+- app/lib/pages/running_page.dart:734 — GestureDetector
+- app/lib/pages/running_page.dart:758 — GestureDetector
+- app/lib/pages/stats_page.dart:241 — GestureDetector
+- app/lib/pages/summary_page.dart:105 — TextButton
+- app/lib/pages/summary_page.dart:109 — FilledButton
+- app/lib/pages/summary_page.dart:185 — TextButton
+- app/lib/pages/summary_page.dart:189 — TextButton
+- app/lib/pages/summary_page.dart:354 — PrimaryButton
+- app/lib/pages/summary_page.dart:363 — GhostButton
+- app/lib/pages/summary_page.dart:365 — GhostButton
+- app/lib/pages/summary_page.dart:373 — GhostButton
+- app/lib/pages/training_plan_share_page.dart:124 — TextButton
+- app/lib/pages/training_plan_share_page.dart:139 — OutlinedButton
+- app/lib/pages/training_plan_share_page.dart:140 — OutlinedButton
+- app/lib/pages/training_plan_share_page.dart:143 — FilledButton
+- app/lib/widgets/app_toast.dart:144 — TextButton
+- app/lib/widgets/badges_card.dart:21 — InkWell
+- app/lib/widgets/badges_card.dart:95 — IconButton
+- app/lib/widgets/badges_card.dart:217 — TextButton
+- app/lib/widgets/common.dart:346 — InkWell
+- app/lib/widgets/common.dart:385 — GhostButton
+- app/lib/widgets/common.dart:402 — InkWell
+- app/lib/widgets/common.dart:438 — CircleBtn
+- app/lib/widgets/common.dart:444 — InkWell
+- app/lib/widgets/goal_dialog.dart:69 — TextButton
+- app/lib/widgets/goal_dialog.dart:73 — TextButton
+- app/lib/widgets/load_error_page.dart:30 — FilledButton
+- app/lib/widgets/marathon_training_dashboard.dart:182 — TextButton
+- app/lib/widgets/marathon_training_dashboard.dart:200 — TextButton
+- app/lib/widgets/marathon_training_dashboard.dart:215 — IconButton
+- app/lib/widgets/marathon_training_dashboard.dart:226 — IconButton
+- app/lib/widgets/marathon_training_dashboard.dart:674 — FilledButton
+- app/lib/widgets/marathon_training_dashboard.dart:720 — TextButton
+- app/lib/widgets/marathon_training_dashboard.dart:793 — IconButton
+- app/lib/widgets/marathon_training_dashboard.dart:806 — OutlinedButton
+- app/lib/widgets/marathon_training_dashboard.dart:816 — TextButton
+- app/lib/widgets/marathon_training_dashboard.dart:857 — InkWell
+- app/lib/widgets/marathon_training_dashboard.dart:983 — TextButton
+- app/lib/widgets/marathon_training_dashboard.dart:1057 — TextButton
+- app/lib/widgets/run_share_sheet.dart:120 — IconButton
+- app/lib/widgets/run_share_sheet.dart:150 — PrimaryButton
+- app/lib/widgets/run_start_confirmation.dart:30 — IconButton
+- app/lib/widgets/run_start_confirmation.dart:51 — TextButton
+- app/lib/widgets/run_start_confirmation.dart:59 — FilledButton
+- app/lib/widgets/settings_sheets.dart:107 — TextButton
+- app/lib/widgets/settings_sheets.dart:111 — TextButton
+- app/lib/widgets/settings_sheets.dart:193 — TextButton
+- app/lib/widgets/settings_sheets.dart:197 — TextButton
+- app/lib/widgets/settings_sheets.dart:269 — TextButton
+- app/lib/widgets/settings_sheets.dart:342 — TextButton
+- app/lib/widgets/settings_sheets.dart:358 — TextButton
+- app/lib/widgets/settings_sheets.dart:365 — TextButton
+- app/lib/widgets/training_completion_toggle.dart:46 — IconButton
+- app/lib/widgets/training_month_calendar.dart:136 — IconButton
+- app/lib/widgets/training_month_calendar.dart:156 — IconButton
+- app/lib/widgets/training_month_calendar.dart:165 — IconButton
+- app/lib/widgets/training_month_calendar.dart:433 — InkWell

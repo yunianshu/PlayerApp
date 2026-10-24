@@ -110,7 +110,7 @@ class CoursesPage extends StatelessWidget {
                 color: c.surface2,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 22, color: c.accent),
+              child: Icon(icon, size: 22, color: c.actionForeground),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -145,7 +145,11 @@ class CoursesPage extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Icon(Icons.play_circle_outline, size: 26, color: c.accent),
+            Icon(
+              Icons.play_circle_outline,
+              size: 26,
+              color: c.actionForeground,
+            ),
           ],
         ),
       ),

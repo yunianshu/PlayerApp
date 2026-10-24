@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
 import '../widgets/app_toast.dart';
+
 import 'package:path_provider/path_provider.dart';
 
 import '../services/gpx.dart';
@@ -163,7 +165,7 @@ class _DetailPageState extends State<DetailPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('保存修改'.tr, style: TextStyle(color: c.accent)),
+            child: Text('保存修改'.tr, style: TextStyle(color: c.actionForeground)),
           ),
         ],
       ),

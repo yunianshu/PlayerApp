@@ -57,8 +57,10 @@ class DashboardHarness extends StatefulWidget {
     this.reminderBusy = false,
     this.planName = '厦门马拉松',
     this.goalSummary = '目标先按 5 小时 15 分评估',
+    this.runsByDate = const {},
   });
   final List<TrainingTask> tasks;
+  final Map<String, double> runsByDate;
   final DateTime? now;
   final VoidCallback? onSettings;
   final ValueChanged<TrainingTask>? onFeedback;
@@ -94,7 +96,7 @@ class _DashboardHarnessState extends State<DashboardHarness> {
       goalSummary: widget.goalSummary,
       now: widget.now ?? DateTime(2026, 10, 26),
       completed: done,
-      runsByDate: const {},
+      runsByDate: widget.runsByDate,
       feedback: const {},
       reminderEnabled: true,
       reminderHour: 6,
@@ -540,10 +542,10 @@ void main() {
       await reveal(tester, complete);
       await tester.tap(complete);
       await tester.pumpAndSettle();
-      expect(find.text('已完成 · 点击撤销'), findsOneWidget);
+      expect(find.text('已手动完成 · 点击撤销'), findsOneWidget);
       await tester.tap(complete);
       await tester.pumpAndSettle();
-      expect(find.text('标记为已完成'), findsOneWidget);
+      expect(find.text('手动标记为已完成'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -639,12 +641,12 @@ void main() {
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(calls, 1);
-    expect(find.text('恢复 / 力量 · 已完成'), findsOneWidget);
+    expect(find.text('已手动完成\n暂无跑步记录 · 跑量不代替本项完成'), findsOneWidget);
     expect(find.text('休息或步行，并完成温和的髋部与核心力量练习。'), findsNothing);
     await tester.tap(toggle);
     await tester.pumpAndSettle();
     expect(calls, 2);
-    expect(find.text('恢复 / 力量 · 已完成'), findsNothing);
+    expect(find.text('已手动完成\n暂无跑步记录 · 跑量不代替本项完成'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

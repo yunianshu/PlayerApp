@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+
+import 'run_feedback_diagnostics.dart';
 
 /// 后台保活：Android 前台服务（location 类型）+ ohos 长时任务（LOCATION）。
 /// iOS 由 AppleSettings + Info.plist 启用后台定位，不需要原生通道。
@@ -11,23 +14,62 @@ class BackgroundService {
 
   static Future<bool> start() async {
     if (Platform.isIOS || Platform.isMacOS) return true;
+    final requestSession = RunFeedbackDiagnostics.session;
+    final requestId = RunFeedbackDiagnostics.event(
+      'background_task',
+      'request',
+      {'operation': 'start', 'systemNotificationPossible': true},
+    );
     try {
       await _channel.invokeMethod<void>('start');
+      RunFeedbackDiagnostics.event('background_task', 'accepted', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'physicalVibrationObserved': 'unknown',
+      });
       return true;
     } on MissingPluginException {
+      RunFeedbackDiagnostics.event('background_task', 'error', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'errorCode': 'missing_plugin',
+      });
       return false;
-    } on PlatformException {
+    } on PlatformException catch (error) {
+      RunFeedbackDiagnostics.event('background_task', 'error', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'errorCode': error.code,
+      });
       return false;
     }
   }
 
   static Future<void> stop() async {
+    final requestSession = RunFeedbackDiagnostics.session;
+    final requestId = RunFeedbackDiagnostics.event(
+      'background_task',
+      'request',
+      {'operation': 'stop'},
+    );
     try {
       await _channel.invokeMethod<void>('stop');
+      RunFeedbackDiagnostics.event('background_task', 'accepted', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+      });
     } on MissingPluginException {
-      // 同上。
-    } on PlatformException {
-      // 忽略。
+      RunFeedbackDiagnostics.event('background_task', 'error', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'errorCode': 'missing_plugin',
+      });
+    } on PlatformException catch (error) {
+      RunFeedbackDiagnostics.event('background_task', 'error', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'errorCode': error.code,
+      });
     }
   }
 
@@ -55,17 +97,77 @@ class BackgroundService {
     }
   }
 
-  /// 刷新前台通知的实时成绩（息屏/锁屏可见，Keep 同款交互）。
-  /// Android 刷新通知内容；ohos 的长时任务通知由系统生成、内容不可定制，
-  /// 原生侧接收后直接成功返回；失败静默——通知文案是尽力而为的增强。
+  /// Best-effort live stats; Harmony returns privacy-safe publication evidence.
+  /// API success is not proof that the operating system did/did not vibrate.
   static Future<void> updateStats(String text) async {
     if (Platform.isIOS || Platform.isMacOS) return;
+    final requestSession = RunFeedbackDiagnostics.session;
+    final requestId = RunFeedbackDiagnostics.event(
+      'running_notification',
+      'request',
+      {'systemNotificationPossible': true},
+    );
     try {
-      await _channel.invokeMethod<void>('update', {'text': text});
+      final response = await _channel.invokeMethod<Object?>('update', {
+        'text': text,
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'elapsedMs': RunFeedbackDiagnostics.elapsedMilliseconds,
+      });
+      final fields = <String, Object?>{
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'physicalVibrationObserved': 'unknown',
+      };
+      if (response is String) {
+        // Whitelist small flags only; never copy native content or arbitrary text.
+        final decoded = jsonDecode(response);
+        if (decoded is Map) {
+          for (final key in [
+            'outcome',
+            'slot',
+            'isAlertOnce',
+            'vibrationEnabled',
+            'slotLevel',
+          ]) {
+            final value = decoded[key];
+            if (value is bool ||
+                value is num ||
+                (value is String &&
+                    [
+                      'accepted',
+                      'inactive',
+                      'stale',
+                      'SOCIAL_COMMUNICATION',
+                    ].contains(value))) {
+              fields[key] = value;
+            }
+          }
+        }
+      }
+      RunFeedbackDiagnostics.event(
+        'running_notification',
+        'api_result',
+        fields,
+      );
     } on MissingPluginException {
-      // 平台未实现时忽略。
-    } on PlatformException {
-      // 忽略。
+      RunFeedbackDiagnostics.event('running_notification', 'error', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'errorCode': 'missing_plugin',
+      });
+    } on PlatformException catch (error) {
+      RunFeedbackDiagnostics.event('running_notification', 'error', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'errorCode': error.code,
+      });
+    } on FormatException {
+      RunFeedbackDiagnostics.event('running_notification', 'error', {
+        'requestId': requestId,
+        'requestSession': requestSession,
+        'errorCode': 'invalid_diagnostic_response',
+      });
     }
   }
 }

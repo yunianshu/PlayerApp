@@ -16,6 +16,7 @@ import '../widgets/load_error_page.dart';
 import '../widgets/settings_sheets.dart';
 import '../widgets/app_toast.dart';
 import 'ai_coach_settings_page.dart';
+import 'body_weight_page.dart';
 
 import '../core/i18n.dart';
 import '../core/prefs.dart';
@@ -117,8 +118,32 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _backup() async {
+    final includeWeight = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('备份数据'),
+        content: const Text(
+          '备份包含跑步记录及轨迹。是否另外包含体重记录？体重属于个人健康相关信息，请只保存到可信位置。训练计划分享不会包含体重。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('不含体重'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('包含体重'),
+          ),
+        ],
+      ),
+    );
+    if (includeWeight == null || !mounted) return;
     try {
-      final json = await BackupService.exportJson();
+      final json = await BackupService.exportJson(includeWeight: includeWeight);
       final dir = await getTemporaryDirectory();
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final file = File('${dir.path}/runtrail_backup_$stamp.json');
@@ -330,7 +355,7 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('好'.tr, style: TextStyle(color: c.accent)),
+            child: Text('好'.tr, style: TextStyle(color: c.actionForeground)),
           ),
         ],
       ),
@@ -745,6 +770,16 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           _row(
             c,
+            Icons.monitor_weight_outlined,
+            '体重记录',
+            '本机记录 / 变化趋势',
+            onTap: () => Navigator.of(context).push<void>(
+              MaterialPageRoute(builder: (_) => const BodyWeightPage()),
+            ),
+          ),
+          Divider(height: 1, color: c.divider),
+          _row(
+            c,
             Icons.smart_toy_outlined,
             'AI 服务设置',
             'API Key / 模型',
@@ -779,7 +814,9 @@ class _ProfilePageState extends State<ProfilePage> {
               secondary: !icons.supported && icons.loaded
                   ? IconButton(
                       tooltip: '重新检测桌面图标支持情况',
-                      icon: Icon(Icons.refresh, color: c.accent),
+                      color: c.actionForeground,
+                      disabledColor: c.textMuted,
+                      icon: const Icon(Icons.refresh),
                       onPressed: icons.busy ? null : icons.refreshSupport,
                     )
                   : null,

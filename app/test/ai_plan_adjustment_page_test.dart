@@ -182,6 +182,38 @@ Future<void> pumpReview(
 }
 
 void main() {
+  testWidgets(
+    'unchanged adaptive proposal shows evidence but cannot be applied',
+    (tester) async {
+      final tasks = original();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AiPlanAdjustmentPage(
+            before: tasks,
+            draft: AiPlanDraft(
+              plan: {'name': '测试', 'tasks': tasks},
+              warnings: const [],
+              summary: '保持安排',
+              adaptationEvidence: const ['体重趋势证据不足，本次不据此增减训练。', '睡眠未记录。'],
+            ),
+          ),
+        ),
+      );
+      expect(find.text('本次自适应依据'), findsOneWidget);
+      expect(find.textContaining('体重趋势证据不足'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('adjustment-confirm')),
+        250,
+      );
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('adjustment-confirm')))
+            .onPressed,
+        isNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final mode in [
     AppThemeMode.light,
     AppThemeMode.dark,

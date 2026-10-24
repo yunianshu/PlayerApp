@@ -1,14 +1,21 @@
+import '../services/body_weight_service.dart';
+import '../widgets/weight_ai_consent.dart';
+
 import 'package:flutter/material.dart';
 
 import '../services/marathon_training_service.dart';
 import '../services/training_reminder_service.dart';
 import '../data/database.dart';
+import '../services/app_data.dart';
+import '../services/training_run_results.dart';
 import '../services/training_feedback_service.dart';
 import '../services/adaptive_training_service.dart';
 import '../services/ai_coach_settings.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/marathon_training_dashboard.dart';
 import 'ai_coach_settings_page.dart';
+import 'training_plan_share_page.dart';
+import '../services/training_plan_export.dart';
 import 'ai_plan_creation_page.dart';
 import 'ai_plan_adjustment_page.dart';
 import '../widgets/ai_plan_design.dart';
@@ -29,9 +36,11 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
   bool _reminderEnabled = false;
   bool _aiBusy = false;
   bool _planBusy = false;
+  bool _shareBusy = false;
   bool _aiWaiting = false;
   int _aiRequest = 0;
   int _planLoad = 0;
+  int _runsLoad = 0;
   String _planId = MarathonTrainingService.id;
   Map<String, dynamic>? _plan;
   bool _reminderBusy = false;
@@ -44,6 +53,26 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
     super.initState();
     _tasks = _loadPlan();
     _loadExtras();
+    AppData.instance.addListener(_reloadRuns);
+  }
+
+  @override
+  void dispose() {
+    AppData.instance.removeListener(_reloadRuns);
+    ++_runsLoad;
+    super.dispose();
+  }
+
+  Future<void> _reloadRuns() async {
+    final load = ++_runsLoad;
+    try {
+      final km = await _readActualKm();
+      if (mounted && load == _runsLoad) setState(() => _runsByDate = km);
+    } catch (error) {
+      if (mounted && load == _runsLoad) {
+        showAppToast(context, '跑步成果刷新失败：$error');
+      }
+    }
   }
 
   Future<List<TrainingTask>> _loadPlan() async {
@@ -62,6 +91,47 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       });
     }
     return tasks;
+  }
+
+  Future<void> _sharePlan() async {
+    if (_shareBusy || _planBusy || _aiBusy) return;
+    setState(() => _shareBusy = true);
+    try {
+      final load = _tasks;
+      final tasks = await load;
+      final actual = await _readActualKm();
+      if (!mounted || load != _tasks || tasks.isEmpty || _plan == null) return;
+      final data = TrainingPlanExportData(
+        name: _plan!['name'] as String? ?? '马拉松训练计划',
+        raceDate: _plan!['raceDate'] as String? ?? '',
+        goal: _plan!['goalMinutes'] is num
+            ? '目标：${_plan!['goalMinutes']} 分钟（需结合训练评估）'
+            : '目标：${_plan!['goal'] ?? '健康完赛，按恢复情况调整'}',
+        createdAt: DateTime.now(),
+        tasks: tasks,
+        completed: _done,
+        results: {
+          for (final task in tasks)
+            task.date: TrainingRunResults.forTask(
+              task,
+              actualKm: actual[task.date],
+              manuallyCompleted: _done.contains(task.date),
+            ),
+        },
+      );
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => TrainingPlanSharePage(
+            data: data,
+            palette: PlanDesign.of(context, listen: false).palette,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) showAppToast(context, '训练计划读取失败，请重试');
+    } finally {
+      if (mounted) setState(() => _shareBusy = false);
+    }
   }
 
   Future<void> _managePlans() async {
@@ -153,21 +223,15 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
   }
 
   Future<void> _loadExtras() async {
+    await _reloadRuns();
     try {
       final enabled = await TrainingReminderService.enabled();
       final time = await TrainingReminderService.time();
-      final runs = await RunDatabase.instance.listRuns();
-      final km = <String, double>{};
-      for (final run in runs) {
-        final day = run.start.toLocal().toIso8601String().substring(0, 10);
-        km[day] = (km[day] ?? 0) + run.distanceKm;
-      }
       if (mounted) {
         setState(() {
           _reminderEnabled = enabled;
           _hour = time.$1;
           _minute = time.$2;
-          _runsByDate = km;
         });
       }
     } catch (error) {
@@ -255,11 +319,14 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       );
       final feedback = await TrainingFeedbackService.all(planId: planId);
       final now = DateTime.now();
-      final since = now
-          .subtract(const Duration(days: 28))
-          .toIso8601String()
-          .substring(0, 10);
-      final actualSnapshot = await _readActualKm();
+      final since = DateTime.utc(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 27)).toIso8601String().substring(0, 10);
+      final runsSnapshot = await RunDatabase.instance.listRuns();
+      final runSummary = TrainingRunSummary(runsSnapshot, now);
+      final actualSnapshot = TrainingRunResults.aggregate(runsSnapshot);
       final actual = Map<String, double>.fromEntries(
         actualSnapshot.entries.where((e) => e.key.compareTo(since) >= 0),
       );
@@ -278,31 +345,72 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       };
       final sourceFingerprint = jsonEncode(sourceTasks.map(_taskJson).toList());
       final config = settings.config!;
+      BodyWeightSnapshot? weightSnapshot;
+      try {
+        weightSnapshot = await BodyWeightService.instance.snapshot();
+      } catch (_) {
+        /* Optional data never blocks generation. */
+      }
+      final weightSummary = weightSnapshot?.summary(now);
+      var includeWeight = false;
       if (!mounted) return;
       final consent = await _showPlanDialog<bool>(
-        builder: (ctx) => AlertDialog(
-          title: const Text('AI 调整计划 · 发送确认'),
-          content: SingleChildScrollView(
-            child: Text(
-              '模型：${config.model}\n接收服务：${config.endpoint}\n\n'
-              '发送当前赛事与训练计划、完成日期、最近 28 天每日跑量、疼痛和疲劳反馈及建计划时填写的训练状况。'
-              '不发送 GPS 轨迹。以上信息和 API Key 将传至该服务，可能产生费用。\n\n'
-              '本次可减量或在可训练日内同周调换训练，不补跑、不增加周负荷或提速。预览后确认才保存。建议不保证达成目标，也不代替医疗评估。',
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, updateConsent) => AlertDialog(
+            title: const Text('AI 调整计划 · 发送确认'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '模型：${config.model}\n接收服务：${config.endpoint}\n\n'
+                    '发送当前赛事与训练计划、手动完成状态、按跑步记录核对的距离成果、最近 28 天每日跑量、疼痛和疲劳反馈及建计划时填写的训练状况。'
+                    '另发送近 28 天活动次数、距离、有效活动时长、加权平均配速、最长单次距离和记录来源计数；心率未接入、睡眠未记录，不推算。'
+                    '不发送 GPS 轨迹。以上信息和 API Key 将传至该服务，可能产生费用。\n\n'
+                    '本次可减量或在可训练日内同周调换训练，不补跑、不增加周负荷或提速。预览后确认才保存。建议不保证达成目标，也不代替医疗评估。',
+                  ),
+                  WeightAiConsent(
+                    unavailable: weightSnapshot == null,
+                    summary: weightSummary,
+                    selected: includeWeight,
+                    onChanged: (value) =>
+                        updateConsent(() => includeWeight = value),
+                  ),
+                ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('同意发送并生成'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('同意发送并生成'),
-            ),
-          ],
         ),
       );
       if (consent != true || !mounted) return;
+      if (includeWeight &&
+          !await BodyWeightService.instance.unchanged(weightSnapshot!)) {
+        throw StateError('体重记录已变化，请重新确认生成');
+      }
+      if (BodyWeightRecord.dateKey(DateTime.now()) !=
+              BodyWeightRecord.dateKey(now) ||
+          await TrainingPlanCatalog.revision(planId) != revision ||
+          !await _completionUnchanged(planId, completed) ||
+          jsonEncode(await TrainingFeedbackService.all(planId: planId)) !=
+              jsonEncode(feedback) ||
+          TrainingRunSummary(
+                await RunDatabase.instance.listRuns(),
+                now,
+              ).fingerprint !=
+              runSummary.fingerprint) {
+        throw StateError('训练或恢复数据已变化，请重新确认发送');
+      }
+      if (!mounted || request != _aiRequest) return;
       setState(() => _aiWaiting = true);
       final draft = await AiPlanGenerator.generateAdjustment(
         existingPlan: source,
@@ -310,10 +418,30 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
         completed: completed,
         actualKm: actual,
         feedback: recentFeedback,
+        weightSummary: includeWeight ? weightSummary : null,
+        runSummary: runSummary,
         config: config,
         apiKey: settings.apiKey!,
       );
       if (!mounted || request != _aiRequest) return;
+      if (includeWeight &&
+          !await BodyWeightService.instance.unchanged(weightSnapshot!)) {
+        throw StateError('体重记录已变化，请重新生成调整');
+      }
+      if (BodyWeightRecord.dateKey(DateTime.now()) !=
+              BodyWeightRecord.dateKey(now) ||
+          _planId != planId ||
+          await TrainingPlanCatalog.revision(planId) != revision ||
+          !await _completionUnchanged(planId, completed) ||
+          jsonEncode(await TrainingFeedbackService.all(planId: planId)) !=
+              jsonEncode(feedback) ||
+          TrainingRunSummary(
+                await RunDatabase.instance.listRuns(),
+                now,
+              ).fingerprint !=
+              runSummary.fingerprint) {
+        throw StateError('训练或恢复数据已变化，请重新生成调整方案');
+      }
       final currentSettings = await AiCoachSettingsStore.instance.load();
       if (currentSettings.config?.endpoint != config.endpoint ||
           currentSettings.config?.model != config.model ||
@@ -331,7 +459,7 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
                 jsonEncode(_taskJson(TrainingTask.fromJson(t))),
           )
           .toList();
-      if (changes.isEmpty) {
+      if (changes.isEmpty && draft.adaptationEvidence.isEmpty) {
         showAppToast(context, 'AI 建议维持当前安排，没有需要保存的调整');
         return;
       }
@@ -347,11 +475,20 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       final fresh = await AdaptiveTrainingService.effectiveTasks(
         planId: planId,
       );
-      if (_planId != planId ||
+      if (BodyWeightRecord.dateKey(DateTime.now()) !=
+              BodyWeightRecord.dateKey(now) ||
+          (includeWeight &&
+              !await BodyWeightService.instance.unchanged(weightSnapshot!)) ||
+          _planId != planId ||
           jsonEncode(fresh.map(_taskJson).toList()) != sourceFingerprint ||
           jsonEncode(await TrainingFeedbackService.all(planId: planId)) !=
               jsonEncode(feedback) ||
-          jsonEncode(await _readActualKm()) != jsonEncode(actualSnapshot)) {
+          jsonEncode(await _readActualKm()) != jsonEncode(actualSnapshot) ||
+          TrainingRunSummary(
+                await RunDatabase.instance.listRuns(),
+                now,
+              ).fingerprint !=
+              runSummary.fingerprint) {
         throw StateError('训练数据已变化，请重新生成调整方案');
       }
       await TrainingPlanCatalog.applyFutureRevision(
@@ -392,14 +529,17 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
     }
   }
 
+  static Future<bool> _completionUnchanged(
+    String planId,
+    Set<String> snapshot,
+  ) async {
+    final current = await MarathonTrainingService.completed(planId: planId);
+    return current.length == snapshot.length && current.containsAll(snapshot);
+  }
+
   static Future<Map<String, double>> _readActualKm() async {
     final runs = await RunDatabase.instance.listRuns();
-    final totals = <String, double>{};
-    for (final run in runs) {
-      final day = run.start.toLocal().toIso8601String().substring(0, 10);
-      totals[day] = (totals[day] ?? 0) + run.distanceKm;
-    }
-    return {for (final day in totals.keys.toList()..sort()) day: totals[day]!};
+    return TrainingRunResults.aggregate(runs);
   }
 
   static Map<String, dynamic> _taskJson(TrainingTask t) => {
@@ -416,13 +556,14 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
     if (_aiBusy || _planBusy || _reminderBusy) return;
     setState(() => _aiBusy = true);
     try {
+      final actualSnapshot = await _readActualKm();
       final proposal = await AdaptiveTrainingService.suggest(
         now: DateTime.now(),
-        actualKm: _runsByDate,
+        actualKm: actualSnapshot,
       );
       if (!mounted) return;
       if (proposal == null) {
-        showAppToast(context, '目前没有需要下调的训练建议');
+        showAppToast(context, '暂无有充分依据的下调建议；缺少跑步记录不等于漏练');
         return;
       }
       final changes = (proposal['changes'] as List)
@@ -459,6 +600,9 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       );
       if (approved != true) return;
       try {
+        if (jsonEncode(await _readActualKm()) != jsonEncode(actualSnapshot)) {
+          throw StateError('跑步记录已变化，请重新生成建议');
+        }
         await AdaptiveTrainingService.apply(proposal);
         if (mounted) setState(() => _tasks = _loadPlan());
         if (await TrainingReminderService.enabled()) {
@@ -579,6 +723,11 @@ class _MarathonTrainingPageState extends State<MarathonTrainingPage> {
       appBar: AppBar(
         title: const Text('训练计划'),
         actions: [
+          IconButton(
+            tooltip: '分享完整训练计划',
+            icon: const Icon(Icons.ios_share),
+            onPressed: _shareBusy || _planBusy || _aiBusy ? null : _sharePlan,
+          ),
           if (_aiWaiting)
             TextButton(
               onPressed: () {

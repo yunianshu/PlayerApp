@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 import '../services/marathon_training_service.dart';
+import '../services/training_run_results.dart';
 import 'training_completion_toggle.dart';
 import 'training_month_calendar.dart';
 import 'training_day_pager.dart';
@@ -81,6 +82,12 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
   List<TrainingTask> get _sortedTasks =>
       [...widget.tasks]..sort((a, b) => a.date.compareTo(b.date));
 
+  TrainingRunResult _result(TrainingTask task) => TrainingRunResults.forTask(
+    task,
+    actualKm: widget.runsByDate[task.date],
+    manuallyCompleted: widget.completed.contains(task.date),
+  );
+
   TrainingTask _selected(List<TrainingTask> tasks) {
     return tasks.firstWhere(
       (task) => task.date == _selectedDate,
@@ -154,11 +161,9 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
     final weekTasks = tasks
         .where((task) => _monday(_day(task.date)) == monday)
         .toList();
-    final completed = tasks
-        .where((task) => widget.completed.contains(task.date))
-        .length;
+    final completed = tasks.where((task) => _result(task).isComplete).length;
     final completedWeek = weekTasks
-        .where((task) => widget.completed.contains(task.date))
+        .where((task) => _result(task).isComplete)
         .length;
     final todayTask = tasks.where((task) => task.date == _today).firstOrNull;
 
@@ -269,6 +274,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
             resetRevision: _calendarReset,
             tasks: tasks,
             completed: widget.completed,
+            runsByDate: widget.runsByDate,
             selectedDate: selectedDate,
             today: _today,
             onSelect: _select,
@@ -314,7 +320,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
         ),
         const SizedBox(height: 6),
         Text(
-          '点选一天查看详情，完成后再勾选。',
+          '本周计划跑步 ${TrainingRunResults.plannedRunDays(weekTasks)} 天（不含力量/休息/比赛）。点选日期查看详情。',
           style: appTextStyle(p, fontSize: 12, color: p.textSecondary),
         ),
         const SizedBox(height: 14),
@@ -472,8 +478,10 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
 
   Widget _sessionCard(AppPalette p, TrainingTask task) {
     final date = _day(task.date);
-    final done = widget.completed.contains(task.date);
-    final recorded = widget.runsByDate[task.date];
+    final result = _result(task);
+    final done = result.isComplete;
+    final manualDone = result.manuallyCompleted;
+    final autoOnly = result.distanceCompleted && !manualDone;
     final saving = _savingDates.contains(task.date);
     final hero = p.isDark ? p.surface2 : p.inverseSurface;
     final ink = p.onInverse;
@@ -573,13 +581,15 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                             color: p.isLight ? p.ringA : p.accent,
                           ),
                           const SizedBox(width: 10),
-                          Text(
-                            '恢复 / 力量',
-                            style: appTextStyle(
-                              p,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w600,
-                              color: ink,
+                          Flexible(
+                            child: Text(
+                              '恢复 / 力量',
+                              style: appTextStyle(
+                                p,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                                color: ink,
+                              ),
                             ),
                           ),
                         ],
@@ -643,7 +653,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                     color: p.textSecondary,
                   ),
                 ),
-                if (recorded != null) ...[
+                ...[
                   const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
@@ -653,7 +663,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: Text(
-                      '已记录 ${recorded.toStringAsFixed(2)} km${done ? '，已确认完成' : '，待你确认完成'}',
+                      '${result.statusLabel}\n${result.summary}${manualDone ? '\n手动完成已保留，跑步距离单独核对。' : ''}${result.distanceCompleted ? '\n距离达标不代表配速或训练质量已达标。' : ''}',
                       style: appTextStyle(p, fontSize: 12, height: 1.5),
                     ),
                   ),
@@ -663,11 +673,13 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                   width: double.infinity,
                   child: FilledButton.icon(
                     key: ValueKey('training-complete-${task.date}'),
-                    onPressed: _savingDates.isNotEmpty
+                    onPressed: _savingDates.isNotEmpty || autoOnly
                         ? null
                         : () => _complete(task),
                     style: FilledButton.styleFrom(
                       backgroundColor: done ? p.surface2 : p.accent,
+                      disabledBackgroundColor: p.surface2,
+                      disabledForegroundColor: p.textSecondary,
                       foregroundColor: done
                           ? p.textPrimary
                           : (p.isDark ? p.bg : p.onAccent),
@@ -697,9 +709,11 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                     label: Text(
                       saving
                           ? '正在保存…'
-                          : done
-                          ? '已完成 · 点击撤销'
-                          : '标记为已完成',
+                          : manualDone
+                          ? '已手动完成 · 点击撤销'
+                          : autoOnly
+                          ? '跑步距离已自动达标'
+                          : '手动标记为已完成',
                     ),
                   ),
                 ),
@@ -824,7 +838,8 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
   }
 
   Widget _weekRow(AppPalette p, TrainingTask task, bool selected) {
-    final done = widget.completed.contains(task.date);
+    final result = _result(task);
+    final done = result.isComplete;
     final expanded = _expandedDates.contains(task.date);
     final date = _day(task.date);
     return Padding(
@@ -897,7 +912,7 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${task.isRun ? '${_km(task.km)} km' : '恢复 / 力量'}${task.date == _today ? ' · 今天' : ''}${done ? ' · 已完成' : ''}',
+                              '${task.date == _today ? '今天 · ' : ''}${result.statusLabel}\n${result.summary}',
                               style: appTextStyle(
                                 p,
                                 fontSize: 12,
@@ -920,10 +935,14 @@ class _MarathonTrainingDashboardState extends State<MarathonTrainingDashboard> {
                       TrainingCompletionToggle(
                         key: ValueKey('training-week-complete-${task.date}'),
                         value: done,
-                        label: '${task.date} ${task.title}完成状态',
+                        label:
+                            '${task.date} ${task.title} ${result.statusLabel}${result.manuallyCompleted ? '，点击撤销手动完成' : ''}',
                         palette: p,
                         busy: _savingDates.contains(task.date),
-                        onPressed: _savingDates.isNotEmpty
+                        onPressed:
+                            _savingDates.isNotEmpty ||
+                                (result.distanceCompleted &&
+                                    !result.manuallyCompleted)
                             ? null
                             : () => _complete(task),
                       ),

@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -59,6 +61,9 @@ AiPlanDraft synthetic(GenericTrainingRequest r) => AiPlanGenerator.parse(
   model: '模拟模型 · 无网络请求',
 );
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
   testWidgets('render validated synthetic plan in three themes', (
     tester,
   ) async {

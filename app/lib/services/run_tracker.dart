@@ -12,6 +12,7 @@ import '../models/run_record.dart';
 import 'app_data.dart';
 import 'background_service.dart';
 import 'diagnostics.dart';
+import 'run_feedback_diagnostics.dart';
 import 'run_draft.dart';
 import 'run_math.dart';
 import 'tracking_location_settings.dart';
@@ -76,7 +77,8 @@ class RunTracker extends ChangeNotifier {
     int totalSeconds,
     int km,
     int? kmSplitSeconds,
-  )? onInterval;
+  )?
+  onInterval;
 
   /// GPS 信号丢失/恢复事件（true=丢失）。仅在状态翻转时触发。
   void Function(bool lost)? onGpsStatus;
@@ -201,6 +203,8 @@ class RunTracker extends ChangeNotifier {
       _announcedUnits = 0;
       _lastUnitElapsedSec = 0;
       _lastLiveText = null;
+      _lastLiveUpdateAt = null;
+      _lastLiveUpdateDist = 0;
       _startTime = _now();
       _segmentStartedAt = _startTime;
       _sessionId =
@@ -208,6 +212,11 @@ class RunTracker extends ChangeNotifier {
       _pauseTime = null;
       _totalPausedMs = 0;
       state = RunState.running;
+      RunFeedbackDiagnostics.beginSession();
+      RunFeedbackDiagnostics.event('settings', 'snapshot', {
+        'autoPauseEnabled': Prefs.instance.autoPauseEnabled,
+        'keepScreenOn': Prefs.instance.keepScreenOn,
+      });
       _watchService();
       await _listen();
       if (_disposed || epoch != _startEpoch || state != RunState.running) {
@@ -304,6 +313,7 @@ class RunTracker extends ChangeNotifier {
 
   void _locationFailed() {
     if (_disposed || !_streamActive) return;
+    RunFeedbackDiagnostics.event('gps_stream', 'failed', {'retrySeconds': 5});
     _setGpsError(true);
     _lastFixAt = null;
     // Unknown movement during a disconnected interval must not form a jump.
@@ -443,6 +453,7 @@ class RunTracker extends ChangeNotifier {
   void _setGpsError(bool value) {
     if (gpsError == value) return;
     gpsError = value;
+    RunFeedbackDiagnostics.event('gps_status', value ? 'lost' : 'restored');
     onGpsStatus?.call(value);
   }
 
@@ -452,7 +463,9 @@ class RunTracker extends ChangeNotifier {
     final total = elapsed.inSeconds;
     // 一次跨过多段（GPS 断档补记）时按平均分段播报，避免单段数据失真成极值。
     final delta = units - _announcedUnits;
-    final split = delta > 0 ? ((total - _lastUnitElapsedSec) / delta).round() : 0;
+    final split = delta > 0
+        ? ((total - _lastUnitElapsedSec) / delta).round()
+        : 0;
     if (split < 0) return;
     _lastUnitElapsedSec = total;
 
@@ -548,6 +561,7 @@ class RunTracker extends ChangeNotifier {
   /// [auto] 为 true 时保持定位流与后台服务，用于检测恢复移动。
   void pause({bool auto = false}) {
     if (state != RunState.running) return;
+    RunFeedbackDiagnostics.event('run_state', 'pause', {'automatic': auto});
     _pauseTime = _now();
     state = RunState.paused;
     _autoPaused = auto;
@@ -573,6 +587,7 @@ class RunTracker extends ChangeNotifier {
     }
     _pauseTime = null;
     final wasAuto = _autoPaused;
+    RunFeedbackDiagnostics.event('run_state', 'resume', {'automatic': wasAuto});
     _autoPaused = false;
     _autoAnchor = null;
     _autoPause.reset();
@@ -611,6 +626,7 @@ class RunTracker extends ChangeNotifier {
   }
 
   void _endTracking() {
+    if (state != RunState.idle) RunFeedbackDiagnostics.endSession();
     ++_startEpoch;
     state = RunState.idle;
     _startTime = null;
@@ -670,7 +686,9 @@ class RunTracker extends ChangeNotifier {
     final now = currentTime();
     final last = _lastLiveUpdateAt;
     final distAdvanced = distanceM - _lastLiveUpdateDist >= 100;
-    if (last != null && !distAdvanced && now.difference(last) < const Duration(seconds: 10)) {
+    if (last != null &&
+        !distAdvanced &&
+        now.difference(last) < const Duration(seconds: 10)) {
       return;
     }
     final text = lockScreenStatsText(

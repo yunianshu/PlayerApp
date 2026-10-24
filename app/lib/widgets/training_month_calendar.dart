@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 import '../services/marathon_training_service.dart';
+import '../services/training_run_results.dart';
 import 'common.dart';
 
 /// A full-month board of readable daily training cards. One horizontal viewport
@@ -17,6 +18,7 @@ class TrainingMonthCalendar extends StatefulWidget {
     required this.today,
     required this.onSelect,
     this.resetRevision = 0,
+    this.runsByDate = const {},
     this.onToday,
   });
 
@@ -24,6 +26,7 @@ class TrainingMonthCalendar extends StatefulWidget {
   final int resetRevision;
   final List<TrainingTask> tasks;
   final Set<String> completed;
+  final Map<String, double> runsByDate;
   final String selectedDate, today;
   final ValueChanged<TrainingTask> onSelect;
 
@@ -85,6 +88,12 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
     }
   }
 
+  TrainingRunResult _result(TrainingTask task) => TrainingRunResults.forTask(
+    task,
+    actualKm: widget.runsByDate[task.date],
+    manuallyCompleted: widget.completed.contains(task.date),
+  );
+
   void _changeMonth(int delta) => setState(() {
     _month = DateTime(_month.year, _month.month + delta);
     _needsPosition = true;
@@ -103,9 +112,7 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
         .where((t) => _monthOf(t.date) == _month)
         .toList();
     final km = monthTasks.fold<double>(0, (sum, t) => sum + t.km);
-    final done = monthTasks
-        .where((t) => widget.completed.contains(t.date))
-        .length;
+    final done = monthTasks.where((t) => _result(t).isComplete).length;
     final days = DateTime(_month.year, _month.month + 1, 0).day;
     final offset = _month.weekday - 1;
     final rows = ((offset + days) / 7).ceil();
@@ -182,7 +189,7 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
               final boardWidth = cardWidth * 7 + 6 * 8;
               final scrolls = boardWidth > constraints.maxWidth + 1;
               final cardHeight =
-                  (compact ? 60.0 : 244.0) * math.max(1.0, scale);
+                  (compact ? 60.0 : 268.0) * math.max(1.0, scale);
               if (_needsPosition) {
                 _needsPosition = false;
                 final focus = _monthOf(widget.selectedDate) == _month
@@ -332,7 +339,7 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
             ),
           const SizedBox(height: 10),
           Text(
-            '今天突出显示，选中卡片有外框。过往未勾选仅表示未记录完成。',
+            '按跑步开始日核对距离，手动完成单独保留。暂无记录不代表漏训。',
             style: appTextStyle(
               p,
               fontSize: 10,
@@ -381,19 +388,12 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
     final dateValue = DateTime(_month.year, _month.month, day);
     final date = _key(dateValue);
     final task = tasks[date];
-    final done = task != null && widget.completed.contains(date);
+    final result = task == null ? null : _result(task);
+    final done = result?.isComplete ?? false;
     final rest = task?.type == 'REST';
     final today = date == widget.today;
     final selected = date == widget.selectedDate;
-    final status = task == null
-        ? '无训练安排'
-        : done
-        ? '已完成'
-        : rest
-        ? '休息'
-        : date.compareTo(widget.today) < 0
-        ? '未记录完成'
-        : '待训练';
+    final status = result?.statusLabel ?? '无训练安排';
     final accent = rest || task == null ? p.textSecondary : p.accent;
     final textAccent = p.isEditorial ? p.textPrimary : accent;
     final keySession =
@@ -421,7 +421,7 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
     return Semantics(
       key: ValueKey('training-calendar-semantics-$date'),
       label:
-          '$date${today ? ' 今天' : ''} $status${task == null ? '' : ' ${task.title} ${task.km}公里'}',
+          '$date${today ? ' 今天' : ''} $status${task == null ? '' : ' ${task.title} ${result!.summary}'}',
       button: task != null,
       enabled: task != null,
       selected: selected,
@@ -475,7 +475,11 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
                       const SizedBox(height: 4),
                       Expanded(
                         child: Text(
-                          task == null ? '无安排' : _type(task),
+                          task == null
+                              ? '无安排'
+                              : (result!.actualKm != null
+                                    ? result.statusLabel
+                                    : _type(task)),
                           maxLines: 2,
                           style: appTextStyle(
                             p,
@@ -615,8 +619,12 @@ class _TrainingMonthCalendarState extends State<TrainingMonthCalendar>
                           ),
                         const SizedBox(height: 6),
                         Text(
-                          task.notes.isEmpty ? '点击查看训练说明与反馈' : task.notes,
-                          maxLines: 2,
+                          result!.actualKm == null
+                              ? (task.notes.isEmpty
+                                    ? '点击查看训练说明与反馈'
+                                    : task.notes)
+                              : result.summary,
+                          maxLines: 3,
                           style: appTextStyle(
                             p,
                             fontSize: 10,
