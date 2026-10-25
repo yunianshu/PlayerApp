@@ -1,7 +1,7 @@
 name: runtrail
 description: "跑迹 RunTrail - 跑步里程记录（本地应用）"
 publish_to: 'none'
-version: 1.3.5+23
+version: 1.3.6+24
 
 # 鸿蒙专用 pubspec：与 ohos-flutter 3.22 (Dart 3.4) 兼容。
 # 原生插件全部换成 OpenHarmony-SIG 社区适配版（git 引用）。
