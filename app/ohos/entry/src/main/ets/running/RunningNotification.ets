@@ -8,9 +8,10 @@ export default class RunningNotification {
   private epoch: number = 0;
   private active: boolean = false;
   private slotReady: boolean = false;
+  private lastText: string = '';
   private pending: Promise<void> = Promise.resolve();
 
-  begin(): void { this.epoch++; this.active = true; this.slotReady = false; }
+  begin(): void { this.epoch++; this.active = true; this.slotReady = false; this.lastText = ''; }
   async end(): Promise<void> {
     this.active = false;
     this.epoch++;
@@ -28,6 +29,7 @@ export default class RunningNotification {
 
   private async publish(text: string, requestId: string, elapsedMs: number, epoch: number): Promise<string> {
     if (!this.active || epoch !== this.epoch || text.length === 0) return JSON.stringify({ outcome: 'inactive' });
+    if (text === this.lastText) return JSON.stringify({ outcome: 'unchanged', isAlertOnce: true });
     // Keep the existing lock-screen-visible slot; only repeated updates are quiet.
     // Do not mutate the user's slot settings or repurpose training reminder slots.
     if (!this.slotReady) {
@@ -51,12 +53,14 @@ export default class RunningNotification {
       id: 1001,
       notificationSlotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
       isAlertOnce: true,
+      isOngoing: true,
       content: {
         contentType: notification.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
         normal: { title: '跑步记录中', text: text, additionalText: '跑迹 RunTrail' }
       }
     });
     // Success means publication accepted, not evidence of a physical vibration.
+    this.lastText = text;
     console.info(`RUN_FEEDBACK source=running_notification phase=accepted requestId=${requestId} vibrationObserved=unknown`);
     return JSON.stringify({ outcome: 'accepted', slot: 'SOCIAL_COMMUNICATION', isAlertOnce: true,
       vibrationEnabled: vibrationEnabled, slotLevel: slotLevel, vibrationObserved: 'unknown' });
