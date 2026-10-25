@@ -17,17 +17,24 @@ const policy = new Function('notificationManager', 'notification', 'console', `$
 const run = new policy();
 assert.equal(JSON.parse(await run.update('stats', 'before', 0)).outcome, 'inactive');
 run.begin();
-for (const ms of [0, 10000, 20000, 30000, 40000, 90000]) {
-  const summary = JSON.parse(await run.update('private distance', `id-${ms}`, ms));
-  assert.equal(summary.outcome, 'accepted');
-  assert.equal(summary.vibrationObserved, 'unknown');
-  assert.equal(summary.vibrationEnabled, true);
+// 实时文本每条不同（Dart 侧 10s 节流后仍会推进）；同文本重发被原生层去重。
+const texts = ['private distance', '1.0 km', '1.0 km', '2.0 km', '2.0 km', '3.0 km'];
+for (const [i, ms] of [0, 10000, 20000, 30000, 40000, 90000].entries()) {
+  const summary = JSON.parse(await run.update(texts[i], `id-${ms}`, ms));
+  const expected = i > 0 && texts[i] === texts[i - 1] ? 'unchanged' : 'accepted';
+  assert.equal(summary.outcome, expected);
+  if (expected === 'accepted') {
+    assert.equal(summary.vibrationObserved, 'unknown');
+    assert.equal(summary.vibrationEnabled, true);
+  }
   assert.ok(!JSON.stringify(summary).includes('private'));
 }
 assert.equal(calls.filter(c => c[0] === 'slot').length, 1);
-assert.equal(calls.filter(c => c[0] === 'publish').length, 6);
+// 6 次请求、4 次文本变化 → 4 次实际发布（重复文本被去重）。
+assert.equal(calls.filter(c => c[0] === 'publish').length, 4);
 for (const [, req] of calls.filter(c => c[0] === 'publish')) {
   assert.equal(req.id, 1001); assert.equal(req.isAlertOnce, true);
+  assert.equal(req.isOngoing, true);
   assert.equal(req.notificationSlotType, 1);
   assert.ok(!('notificationFlags' in req)); // API23-only writable field prohibited.
 }
