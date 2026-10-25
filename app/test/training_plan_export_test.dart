@@ -56,7 +56,15 @@ void main() {
     PathProviderPlatform.instance = _Paths(temp.path);
   });
   tearDown(() async {
-    if (await temp.exists()) await temp.delete(recursive: true);
+    // Windows 上分享的长图可能仍被异步句柄短暂占用，硬删会抛 errno 32；
+    // 清理失败不判定为用例失败，留给系统临时目录回收。
+    if (await temp.exists()) {
+      try {
+        await temp.delete(recursive: true);
+      } on FileSystemException {
+        // ignore: best-effort cleanup
+      }
+    }
   });
 
   test(
