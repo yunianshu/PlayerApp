@@ -111,9 +111,11 @@ USB 安装成功只能证明安装包能被设备安装，不能代替蒲公英�
 - 固定 `web: 0.5.1` 以兼容 Dart 3.4，并将工程副本中的 JSON5 等文件统一为 LF 换行。
 - 分享 API 与 PopScope 的 Flutter 3.22 兼容用法保留在明确标注的边界；静态检查无需全局禁用弃用提示。
 
-### 语音播报无法压低其他应用音量
+### 语音播报与音乐共存（合成模式自播放）
 
-`@ohos.multimedia.audio` 没有应用侧申请音频焦点的 API（焦点由系统按音频流用途在渲染时自动分配），CoreSpeechKit `SpeakParams` 也不暴露音频属性，TTS 引擎内部自行渲染音频。因此播报期间其他应用（如音乐）的音量无法由本应用主动压低，只能依赖系统对 TTS 流的焦点策略。Android 端通过 `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` 实现、iOS 端通过 `AVAudioSession.duckOthers` 实现压低音量；鸿蒙端在系统提供相应 API 前不做处理。
+早期版本里 CoreSpeechKit 直接由引擎播放（`playType=1` 默认），引擎按 MEDIA 流渲染，系统并发策略会**暂停**正在播放的音乐且播完不恢复。鸿蒙没有应用侧申请音频焦点的 API（焦点由系统按音频流用途在渲染时自动分配），但 `SpeakParams.extraParams` 支持 `playType: 0`——仅合成不播报，PCM 音频流经 `SpeakListener.onData` 回调（按 `response.sequence` 排序）。
+
+因此播报改为合成模式 + 本地 `AudioRenderer` 播放（`running/TtsPlayback.ets`）：渲染器用 `STREAM_USAGE_NAVIGATION`（导航语义），系统对音乐流只压低音量不暂停，播完自动恢复。策略纯逻辑（渲染器工厂注入）由 `node tool/test_tts_playback_ohos.mjs` 宿主测试覆盖：乱序排序、队列接续、打断丢弃、引擎自播回退、缺口截断与创建失败恢复。若 `playType` 在某设备未生效（无 `onData` 回调），策略不建渲染器，引擎自播保持可用——退化为旧的暂停音乐行为而不是无声。引擎创建时带 `isBackStage: true` 支持锁屏播报。Android 端通过 `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`（导航播报语义）实现、iOS 端通过 `AVAudioSession.duckOthers` 实现同样的压低音量。
 
 ## 测试与设备验收
 

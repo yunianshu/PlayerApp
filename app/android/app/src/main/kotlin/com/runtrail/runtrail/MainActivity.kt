@@ -277,7 +277,7 @@ class MainActivity : FlutterActivity() {
             }
             val audioStatus = engine.setAudioAttributes(
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build(),
             )
@@ -326,9 +326,11 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= 26) {
             val request = audioFocusRequest
                 ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    // 导航播报语义：与高德等一致，音乐应用收到 CAN_DUCK 后压低
+                    // 音量而不是暂停（USAGE_MEDIA 会被当作另一个播放器抢播）。
                     .setAudioAttributes(
                         AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build(),
                     )
