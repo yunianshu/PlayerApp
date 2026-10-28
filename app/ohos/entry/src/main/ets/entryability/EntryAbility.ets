@@ -5,11 +5,13 @@ import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { wantAgent, WantAgent } from '@kit.AbilityKit';
 import { textToSpeech } from '@kit.CoreSpeechKit';
+import { audio } from '@kit.AudioKit';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 import AiCredentialsStore from '../security/AiCredentialsStore';
 import TrainingReminders from '../reminders/TrainingReminders';
 import LauncherIconSupport from '../appearance/LauncherIconSupport';
 import RunningNotification from '../running/RunningNotification';
+import TtsPlayback, { TtsRenderer } from '../running/TtsPlayback';
 
 export default class EntryAbility extends FlutterAbility {
   private backgroundChannel?: MethodChannel;
@@ -19,6 +21,31 @@ export default class EntryAbility extends FlutterAbility {
   private ttsReady: boolean = false;
   private ttsCreating: boolean = false;
   private ttsInitResults: MethodResult[] = [];
+  // 合成模式自播放：playType=0 让引擎只回 PCM，本侧用导航语义渲染器播出，
+  // 系统对音乐流压低音量而不是暂停（引擎直播会以 MEDIA 流抢占音乐）。
+  private ttsPlayback: TtsPlayback = new TtsPlayback({
+    create: async (sampleRate: number, channels: number, sampleBit: number): Promise<TtsRenderer> => {
+      const renderer: audio.AudioRenderer = await audio.createAudioRenderer({
+        streamInfo: {
+          samplingRate: sampleRate,
+          channels: channels === 2 ? audio.AudioChannel.CHANNEL_2 : audio.AudioChannel.CHANNEL_1,
+          sampleFormat: audio.AudioSampleFormat.SAMPLE_FORMAT_S16LE,
+          encodingType: audio.AudioEncodingType.ENCODING_TYPE_RAW,
+        },
+        rendererInfo: {
+          usage: audio.StreamUsage.STREAM_USAGE_NAVIGATION,
+          rendererFlags: 0,
+        },
+      });
+      return {
+        start: (): Promise<void> => renderer.start(),
+        write: (chunk: ArrayBuffer): Promise<number> => renderer.write(chunk),
+        drain: (): Promise<void> => renderer.drain(),
+        stop: (): Promise<void> => renderer.stop(),
+        release: (): Promise<void> => renderer.release(),
+      };
+    },
+  });
 
   configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -92,6 +119,7 @@ export default class EntryAbility extends FlutterAbility {
     this.ttsCreating = true
     this.ttsInitResults.push(result)
     if (this.ttsEngine) {
+      this.ttsPlayback.cancel()
       try {
         this.ttsEngine.shutdown()
       } catch (err) {
@@ -104,6 +132,9 @@ export default class EntryAbility extends FlutterAbility {
       language: lang,
       person: 0,
       online: 1,
+      extraParams: {
+        'isBackStage': true,
+      } as Record<string, Object>,
     }
     textToSpeech.createEngine(params,
       (err: BusinessError, engine: textToSpeech.TextToSpeechEngine) => {
@@ -116,15 +147,25 @@ export default class EntryAbility extends FlutterAbility {
         }
         engine.setListener({
           onStart: (requestId: string, response: textToSpeech.StartResponse) => {
+            this.ttsPlayback.startUtterance(requestId, response.sampleRate,
+              response.audioChannel, response.sampleBit)
+          },
+          onData: (requestId: string, chunk: ArrayBuffer,
+            response: textToSpeech.SynthesisResponse) => {
+            this.ttsPlayback.feed(requestId, response.sequence, chunk)
           },
           onComplete: (requestId: string,
             response: textToSpeech.CompleteResponse) => {
+            this.ttsPlayback.complete(requestId)
           },
           onStop: (requestId: string, response: textToSpeech.StopResponse) => {
+            // cancel() 已同步静音；这里只忽略迟到的停止回调。
           },
           onError: (requestId: string, errorCode: number,
             errorMessage: string) => {
             console.error(`tts speak failed: ${errorCode} ${errorMessage}`)
+            // 合成失败：把已到数据按完成收尾，避免播报卡在队列里。
+            this.ttsPlayback.complete(requestId)
           }
         })
         this.ttsEngine = engine
@@ -149,7 +190,8 @@ export default class EntryAbility extends FlutterAbility {
       return
     }
     if (flush) {
-      // 打断上一条未播完的内容（倒计时逐字播报）。
+      // 打断上一条未播完的内容（倒计时逐字播报）：先静音本地播放再停引擎。
+      this.ttsPlayback.cancel()
       try {
         this.ttsEngine.stop()
       } catch (err) {
@@ -157,13 +199,20 @@ export default class EntryAbility extends FlutterAbility {
       }
     }
     const speakParams: textToSpeech.SpeakParams = {
-      requestId: `runtrail-${Date.now()}`
+      requestId: `runtrail-${Date.now()}`,
+      // playType=0：仅合成不播报，PCM 经 onData 回调，由本地导航流渲染器
+      // 播出——音乐只压低音量不被暂停（引擎直播走 MEDIA 流会抢占音乐）。
+      extraParams: {
+        'playType': 0,
+        'queueMode': flush ? 1 : 0,
+      } as Record<string, Object>,
     }
     this.ttsEngine.speak(text, speakParams)
     result.success(true)
   }
 
   private stopTts(result: MethodResult): void {
+    this.ttsPlayback.cancel()
     if (this.ttsEngine) {
       try {
         this.ttsEngine.stop()
@@ -225,6 +274,7 @@ export default class EntryAbility extends FlutterAbility {
   }
 
   onDestroy(): void {
+    this.ttsPlayback.cancel()
     if (this.ttsEngine) {
       try {
         this.ttsEngine.shutdown()
