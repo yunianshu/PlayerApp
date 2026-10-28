@@ -204,4 +204,26 @@ void main() {
     expect(WeightTrendPainter.dayPosition(middle, first, last), .1);
     expect(WeightTrendPainter.dayPosition(first, first, first), .5);
   });
+  test('smooth curve passes through measured points without overshoot', () {
+    const points = [
+      Offset(0, 100),
+      Offset(20, 40),
+      Offset(50, 90),
+      Offset(80, 30),
+      Offset(120, 70),
+    ];
+    final curve = WeightTrendPainter.smoothCurve(points);
+    expect(curve.first, points.first);
+    expect(curve.last, points.last);
+    for (final point in points) {
+      expect(curve, contains(point));
+    }
+    // Monotone interpolation must stay inside the measured value range, so
+    // the chart never draws a weight that was not recorded.
+    expect(
+      curve.every((p) => p.dy >= 30 && p.dy <= 100),
+      isTrue,
+      reason: 'curve overshot the measured range: $curve',
+    );
+  });
 }

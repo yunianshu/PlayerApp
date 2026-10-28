@@ -170,7 +170,7 @@ class _BodyWeightPageState extends State<BodyWeightPage> {
                         const Text('近 90 天实测记录'),
                         const SizedBox(height: 12),
                         Semantics(
-                          label: '体重散点图，横轴为真实日期，未记录的日期留空。完整数值见下方记录列表。',
+                          label: '体重曲线图，横轴为真实日期，数值标在实测点上方，未记录的日期不推算。完整数值见下方记录列表。',
                           child: SizedBox(
                             height: 150,
                             child: CustomPaint(
@@ -178,6 +178,7 @@ class _BodyWeightPageState extends State<BodyWeightPage> {
                                 recent,
                                 p.isEditorial ? p.textPrimary : p.accent,
                                 p.stroke,
+                                p.textSecondary,
                               ),
                             ),
                           ),
@@ -191,7 +192,7 @@ class _BodyWeightPageState extends State<BodyWeightPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '仅显示实测点，不补值、不连线推算缺失日期。',
+                          '曲线只把相邻实测点平滑相连；未记录的日期仍无数据，不推算每日数值。',
                           style: TextStyle(color: p.textMuted, fontSize: 12),
                         ),
                         const SizedBox(height: 24),
@@ -237,11 +238,13 @@ class _BodyWeightPageState extends State<BodyWeightPage> {
   );
 }
 
-/// Scatter plot uses elapsed calendar days, not equally spaced record indexes.
+/// Curve uses elapsed calendar days, not equally spaced record indexes. The
+/// line is a monotone cubic (Fritsch–Carlson) through measured points only: it
+/// never overshoots, so the drawing stays inside the measured weight range.
 class WeightTrendPainter extends CustomPainter {
   final List<BodyWeightRecord> records;
-  final Color color, grid;
-  WeightTrendPainter(this.records, this.color, this.grid);
+  final Color color, grid, labelColor;
+  WeightTrendPainter(this.records, this.color, this.grid, this.labelColor);
   static double dayPosition(
     BodyWeightRecord record,
     BodyWeightRecord first,
@@ -254,30 +257,148 @@ class WeightTrendPainter extends CustomPainter {
         : DateTime.parse(record.date).difference(start).inDays / span;
   }
 
+  /// Monotone cubic sampling: passes exactly through every input point and
+  /// never overshoots, so the curve draws no value that was not measured
+  /// between two adjacent records.
+  static List<Offset> smoothCurve(List<Offset> points) {
+    final n = points.length;
+    if (n < 3) return points;
+    for (var i = 1; i < n; i++) {
+      if (points[i].dx <= points[i - 1].dx) return points;
+    }
+    final h = List.generate(n - 1, (i) => points[i + 1].dx - points[i].dx);
+    final slopes = List.generate(n - 1, (i) {
+      final dy = points[i + 1].dy - points[i].dy;
+      return h[i] == 0 ? 0.0 : dy / h[i];
+    });
+    final m = List<double>.filled(n, 0);
+    m[0] = slopes[0];
+    m[n - 1] = slopes[n - 2];
+    for (var i = 1; i < n - 1; i++) {
+      m[i] = slopes[i - 1] * slopes[i] <= 0
+          ? 0
+          : (slopes[i - 1] + slopes[i]) / 2;
+    }
+    for (var i = 0; i < n - 1; i++) {
+      if (slopes[i] == 0) {
+        m[i] = 0;
+        m[i + 1] = 0;
+        continue;
+      }
+      final a = m[i] / slopes[i];
+      final b = m[i + 1] / slopes[i];
+      final squared = a * a + b * b;
+      if (squared > 9) {
+        final tau = 3 / math.sqrt(squared);
+        m[i] = tau * a * slopes[i];
+        m[i + 1] = tau * b * slopes[i];
+      }
+    }
+    final sampled = <Offset>[points.first];
+    for (var i = 0; i < n - 1; i++) {
+      final steps = math.max(1, (h[i] / 6).ceil());
+      for (var s = 1; s <= steps; s++) {
+        final t = s / steps, t2 = t * t, t3 = t2 * t;
+        sampled.add(
+          Offset(
+            points[i].dx + h[i] * t,
+            (2 * t3 - 3 * t2 + 1) * points[i].dy +
+                (t3 - 2 * t2 + t) * h[i] * m[i] +
+                (-2 * t3 + 3 * t2) * points[i + 1].dy +
+                (t3 - t2) * h[i] * m[i + 1],
+          ),
+        );
+      }
+    }
+    return sampled;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     if (records.isEmpty) return;
+    const labelRoom = 18.0, bottom = 8.0;
     final low = records.map((r) => r.kg).reduce(math.min);
     final high = records.map((r) => r.kg).reduce(math.max);
     canvas.drawLine(
-      Offset(8, size.height - 8),
-      Offset(size.width - 8, size.height - 8),
+      Offset(8, size.height - bottom),
+      Offset(size.width - 8, size.height - bottom),
       Paint()..color = grid,
     );
-    for (final record in records) {
-      final x =
-          8 +
-          dayPosition(record, records.first, records.last) * (size.width - 16);
-      final y = high == low
-          ? size.height / 2
-          : 8 + (high - record.kg) / (high - low) * (size.height - 24);
-      canvas.drawCircle(Offset(x, y), 4, Paint()..color = color);
+    Offset position(BodyWeightRecord record) => Offset(
+      8 + dayPosition(record, records.first, records.last) * (size.width - 16),
+      high == low
+          ? (labelRoom + size.height - bottom) / 2
+          : labelRoom +
+                (high - record.kg) / (high - low) * (size.height -
+                    bottom -
+                    labelRoom -
+                    2),
+    );
+
+    final points = records.map(position).toList();
+    if (points.length > 1) {
+      final path = Path()..moveTo(points.first.dx, points.first.dy);
+      for (final point in smoothCurve(points).skip(1)) {
+        path.lineTo(point.dx, point.dy);
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..isAntiAlias = true,
+      );
+    }
+    _paintLabels(canvas, size, points);
+  }
+
+  /// Value labels sit above their measured point. First and last always show;
+  /// middle ones only when horizontal room keeps neighbouring labels apart.
+  void _paintLabels(Canvas canvas, Size size, List<Offset> points) {
+    final painters = [
+      for (final record in records)
+          TextPainter(
+            text: TextSpan(
+              text: record.kg.toStringAsFixed(1),
+              style: TextStyle(
+                color: labelColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout(),
+    ];
+    double? lastEnd;
+    final lastStart = points.last.dx - painters.last.width / 2;
+    for (var i = 0; i < points.length; i++) {
+      final start = points[i].dx - painters[i].width / 2;
+      final end = points[i].dx + painters[i].width / 2;
+      final isEdge = i == 0 || i == points.length - 1;
+      final fitsAfterPrevious = lastEnd == null || start - lastEnd >= 6;
+      final fitsBeforeLast = isEdge || end + 6 <= lastStart;
+      if (isEdge || (fitsAfterPrevious && fitsBeforeLast)) {
+        painters[i].paint(
+          canvas,
+          Offset(
+            start.clamp(0, math.max(0, size.width - painters[i].width)),
+            points[i].dy - painters[i].height - 3,
+          ),
+        );
+        lastEnd = end;
+      }
     }
   }
 
   @override
   bool shouldRepaint(covariant WeightTrendPainter old) =>
-      old.records != records || old.color != color || old.grid != grid;
+      old.records != records ||
+      old.color != color ||
+      old.grid != grid ||
+      old.labelColor != labelColor;
 }
 
 /// Own the controller until the dialog actually unmounts. A timer cannot
