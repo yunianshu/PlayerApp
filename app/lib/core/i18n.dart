@@ -157,6 +157,8 @@ const Map<String, String> _en = {
   '继续跑': 'Keep running',
   '结束': 'Finish',
   '结束记录失败，请重试': 'Failed to finish, please retry',
+  '跑步结束': 'Run finished',
+  '正在生成运动记录…': 'Generating your run record…',
   '已锁定，防止误触': 'Locked to prevent accidental taps',
   '长按下方按钮解锁': 'Long-press the button below to unlock',
   '长按解锁': 'Long-press to unlock',
@@ -297,6 +299,7 @@ const Map<String, String> _en = {
   '目标配速需在 1:00 – 30:00 /公里 之间': 'Target pace must be 1:00 – 30:00 per km',
   '保存目标失败': 'Failed to save target',
   '恭喜解锁新徽章': 'New badges unlocked!',
+  '收下勋章': 'Claim badge',
   // ---- 徽章 ----
   '首跑完成': 'First run',
   '首个 5 公里': 'First 5 km',
