@@ -18,6 +18,7 @@ import '../services/tts_service.dart';
 import '../services/run_feedback_diagnostics.dart';
 import '../services/tracking_policies.dart';
 import '../widgets/common.dart';
+import '../widgets/run_finish_overlay.dart';
 import '../widgets/route_painter.dart';
 import 'summary_page.dart';
 
@@ -38,6 +39,9 @@ class RunningPage extends StatefulWidget {
 class _RunningPageState extends State<RunningPage> with WidgetsBindingObserver {
   bool _locked = false;
   bool _ending = false;
+
+  /// 长按结束后的全屏结束动画：展示期间拦截交互，进总结页时随页面移除。
+  bool _finishing = false;
   late final RunTracker _tracker;
   Timer? _paceTimer;
   PaceTargetEvaluator? _paceEvaluator;
@@ -464,6 +468,7 @@ class _RunningPageState extends State<RunningPage> with WidgetsBindingObserver {
               ),
             ),
             if (_locked) _lockOverlay(c),
+            if (_finishing) const RunFinishOverlay(),
           ],
         ),
       ),
@@ -827,7 +832,8 @@ class _RunningPageState extends State<RunningPage> with WidgetsBindingObserver {
     );
   }
 
-  /// 长按结束：停止记录并直接保存（不再二次确认），进入总结页时已是已保存态。
+  /// 长按结束：先浮现结束动画，同时停止记录并直接保存（不再二次确认），
+  /// 动画完整播一遍后再进总结页，进入时已是已保存态。
   Future<void> _endRun(RunTracker t) async {
     if (_ending) return;
     _ending = true;
@@ -838,10 +844,14 @@ class _RunningPageState extends State<RunningPage> with WidgetsBindingObserver {
           HapticFeedback.mediumImpact,
         ),
       );
+      // 长按是刻意手势，动画立即给"已结束"的确定性反馈，不等异步停止完成。
+      setState(() => _finishing = true);
+      final animStart = DateTime.now();
       final record = await t.stop();
       if (!mounted) return;
       if (record == null) {
         // 轨迹太短，视为放弃
+        setState(() => _finishing = false);
         if (Navigator.of(context).canPop()) Navigator.of(context).pop();
         return;
       }
@@ -855,6 +865,10 @@ class _RunningPageState extends State<RunningPage> with WidgetsBindingObserver {
           showAppToast(context, '自动保存失败，请在下一页手动保存'.tr);
         }
       }
+      // 保存再快也让动画完整播一遍，避免对勾没落笔就切页。
+      const minShow = Duration(milliseconds: 1600);
+      final shown = DateTime.now().difference(animStart);
+      if (shown < minShow) await Future<void>.delayed(minShow - shown);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -864,6 +878,8 @@ class _RunningPageState extends State<RunningPage> with WidgetsBindingObserver {
       );
     } catch (_) {
       if (mounted) {
+        // 回滚动画让用户可以重试长按。
+        setState(() => _finishing = false);
         showAppToast(context, '结束记录失败，请重试'.tr);
       }
     } finally {
